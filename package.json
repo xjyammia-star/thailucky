@@ -13,7 +13,8 @@
     "bcryptjs": "^3.0.2",
     "lunar-javascript": "^1.7.7",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.12.3",

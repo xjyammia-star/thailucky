@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api.ts';
 import { getNextDraw } from './draw.ts';
 import { baht } from './prizes.ts';
+import { extractSixDigits, recognizeTickets } from './ocr.ts';
 
 interface ScoreUnit {
   label: string;
@@ -18,6 +19,15 @@ interface ScoreResult {
   best: string;
   components: { key: string; label: string; pct: number; units: ScoreUnit[] }[];
   unavailable: string[];
+}
+
+interface PhotoResult {
+  input: string;
+  overall: number;
+  best: string;
+  covered?: string;
+  components?: { key: string; label: string; pct: number; units: ScoreUnit[] }[];
+  unavailable?: string[];
 }
 
 interface Hex {
@@ -70,14 +80,15 @@ interface Batch {
   picks: PickItem[];
 }
 
-const METHODS: { key: 'meihua' | 'lucky' | 'score' | 'analysis'; name: string; hint: string }[] = [
+const METHODS: { key: 'meihua' | 'lucky' | 'score' | 'analysis' | 'photo'; name: string; hint: string }[] = [
   { key: 'meihua', name: '命理选号', hint: '依次随意填写3个0-9的数字，根据玄学生成号码' },
   { key: 'lucky', name: '指定数字', hint: '指定一个0-99的数字，其余按你的五行补全' },
   { key: 'analysis', name: '分析选号', hint: '按历史开奖统计，选出现次数最多（热号）或最少（冷号）的数字' },
+  { key: 'photo', name: '图片选号', hint: '拍下摊位上的一堆彩票，识别号码后选出匹配度最高的3个' },
   { key: 'score', name: '选号评分', hint: '输入摊位上看中的号码，评估它和系统选号的匹配度' },
 ];
 
-const METHOD_NAME: Record<string, string> = { random: '纯随机', score: '选号评分', lucky: '指定数字', meihua: '命理选号', analysis: '分析选号', hot: '统计热号', manual: '手动录入' };
+const METHOD_NAME: Record<string, string> = { random: '纯随机', score: '选号评分', photo: '图片选号', lucky: '指定数字', meihua: '命理选号', analysis: '分析选号', hot: '统计热号', manual: '手动录入' };
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -180,10 +191,16 @@ export default function Pick() {
   const next = useMemo(() => getNextDraw(), []);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [summary, setSummary] = useState<{ bought: Group; all: Group } | null>(null);
-  const [method, setMethod] = useState<'lucky' | 'score' | 'meihua' | 'analysis'>('meihua');
+  const [method, setMethod] = useState<'lucky' | 'score' | 'meihua' | 'analysis' | 'photo'>('meihua');
   const [count, setCount] = useState(5);
   const [lucky, setLucky] = useState('');
   const [hotMonths, setHotMonths] = useState(12);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoStatus, setPhotoStatus] = useState('');
+  const [photoText, setPhotoText] = useState('');
+  const [photoRecognized, setPhotoRecognized] = useState(false);
+  const [photoRes, setPhotoRes] = useState<PhotoResult[] | null>(null);
+  const [photoSaved, setPhotoSaved] = useState(false);
   const [scoreInput, setScoreInput] = useState('');
   const [scoreRes, setScoreRes] = useState<ScoreResult | null>(null);
   const [anMode, setAnMode] = useState<'hot' | 'cold'>('hot');
@@ -230,6 +247,61 @@ export default function Pick() {
       setErr(e instanceof Error ? e.message : '录入失败');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function runRecognize() {
+    if (!photoFile) return;
+    setBusy(true);
+    setErr('');
+    setPhotoRes(null);
+    setPhotoSaved(false);
+    try {
+      const nums = await recognizeTickets(photoFile, setPhotoStatus);
+      setPhotoText(nums.join('\n'));
+      setPhotoRecognized(true);
+      setPhotoStatus(nums.length > 0 ? `识别到 ${nums.length} 个6位号码，请核对下面的列表` : '没有识别到6位号码，可以换一张更清晰的照片，或直接在下面手动输入');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '识别失败');
+      setPhotoStatus('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function photoNumbers(): string[] {
+    return Array.from(new Set(extractSixDigits(photoText)));
+  }
+
+  async function runPhotoScore() {
+    setBusy(true);
+    setErr('');
+    setPhotoSaved(false);
+    try {
+      const r = await api<{ results: PhotoResult[] }>('/api/numbers?action=score_many', {
+        method: 'POST',
+        body: { numbers: photoNumbers(), months: hotMonths },
+      });
+      setPhotoRes(r.results);
+    } catch (e) {
+      setPhotoRes(null);
+      setErr(e instanceof Error ? e.message : '匹配失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function savePhotoTop() {
+    if (!photoRes) return;
+    try {
+      await api('/api/numbers?action=save_picks', {
+        method: 'POST',
+        body: { numbers: photoRes.slice(0, 3).map((r) => r.input), targetDraw: next.iso, months: hotMonths },
+      });
+      setPhotoSaved(true);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '保存失败');
     }
   }
 
@@ -348,6 +420,84 @@ export default function Pick() {
             <p className="muted">前4位：每个位置取这段时间出现{anMode === 'hot' ? '最多' : '最少'}的3个数字；后两位：取出现{anMode === 'hot' ? '最多' : '最少'}的10个后两位。</p>
           </div>
         )}
+        {method === 'photo' && (
+          <>
+            <div className="field">
+              <label>拍照或选择照片（尽量让号码清晰、不反光、正对镜头）</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  setPhotoFile(e.target.files?.[0] ?? null);
+                  setPhotoRecognized(false);
+                  setPhotoRes(null);
+                  setPhotoStatus('');
+                }}
+              />
+            </div>
+            <button className="btn block" disabled={busy || !photoFile} onClick={runRecognize}>
+              {busy && !photoRecognized ? '识别中…' : '识别号码'}
+            </button>
+            {photoStatus && <p className="muted" style={{ marginTop: 8 }}>{photoStatus}</p>}
+            {(photoRecognized || photoText) && (
+              <>
+                <div className="field" style={{ marginTop: 12 }}>
+                  <label>识别出的号码（可以修改、删除或补充，每行一个6位号码）</label>
+                  <textarea
+                    rows={6}
+                    value={photoText}
+                    onChange={(e) => setPhotoText(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 16 }}
+                  />
+                  <p className="muted">共 {photoNumbers().length} 个有效号码。识别难免有错，请对照实物检查。</p>
+                </div>
+                <div className="field">
+                  <RangeChips value={hotMonths} onChange={setHotMonths} />
+                </div>
+                <button className="btn block" disabled={busy || photoNumbers().length === 0} onClick={runPhotoScore}>
+                  {busy ? '匹配中…' : '匹配并选出前3名'}
+                </button>
+              </>
+            )}
+            {photoRes && (
+              <div style={{ marginTop: 14 }}>
+                <h2 style={{ fontSize: 16 }}>匹配度最高的 {Math.min(3, photoRes.length)} 个</h2>
+                {photoRes.slice(0, 3).map((r, i) => (
+                  <div key={r.input} style={{ borderBottom: '1px solid var(--line)', padding: '10px 0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span className="num-big" style={{ fontSize: 26 }}>
+                        {i + 1}. {r.input}
+                      </span>
+                      <b>{r.overall.toFixed(1)}%</b>
+                    </div>
+                    <div className="muted">
+                      来自：{r.best || '—'}
+                      {r.components && '　' + r.components.map((c) => `${c.label.split('（')[0]} ${c.pct.toFixed(0)}%`).join('，')}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ marginTop: 10 }}>
+                  <button className="btn ghost small" disabled={photoSaved} onClick={savePhotoTop}>
+                    {photoSaved ? '已保存到我的号码记录' : '保存这几个号码到记录'}
+                  </button>
+                </div>
+                {photoRes.length > 3 && (
+                  <details style={{ marginTop: 10 }}>
+                    <summary className="muted">查看全部 {photoRes.length} 个号码的匹配度</summary>
+                    <div className="nums" style={{ marginTop: 6 }}>
+                      {photoRes.map((r) => (
+                        <span key={r.input}>{r.input} {r.overall.toFixed(0)}%</span>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                <p className="muted" style={{ marginTop: 10 }}>
+                  匹配度只表示和系统选号规则有多相似，不代表中奖概率；每张票的中奖概率完全一样。
+                </p>
+              </div>
+            )}
+          </>
+        )}
         {method === 'score' && (
           <>
             <div className="field">
@@ -377,7 +527,7 @@ export default function Pick() {
             <input type="number" min={0} max={99} value={lucky} onChange={(e) => setLucky(e.target.value)} />
           </div>
         )}
-        {method !== 'score' && (
+        {method !== 'score' && method !== 'photo' && (
         <>
         <div className="field">
           <label>生成几个</label>

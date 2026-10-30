@@ -2,6 +2,8 @@
 //
 // GET  /api/numbers?action=bazi           读取自己的八字五行分析
 // POST /api/numbers?action=score          选号评分（不保存）  body: { digits: '2到6位数字', months }
+// POST /api/numbers?action=score_many     图片选号：批量评分，返回匹配度最高的3个  body: { numbers: string[], months }
+// POST /api/numbers?action=save_picks     保存图片选号选出的号码（不标记购买）  body: { numbers, targetDraw, months }
 // POST /api/numbers?action=generate       生成一批并保存
 //      body: { method: 'lucky'|'meihua'|'analysis', count, targetDraw, luckyNumber?, nums?: [a,b,c], months? }
 //      分析选号另需：mode: 'hot'|'cold'，months：统计最近几个月（6/12/24，0 表示全部历史）
@@ -72,6 +74,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         success: true,
         score: scoreNumber(digits, draws, bazi ? bazi.favorable : null, lucky === null ? null : Number(lucky)),
+        basedOn: draws.length,
+      });
+    }
+
+    if (req.method === 'POST' && (action === 'score_many' || action === 'save_picks')) {
+      const raw: unknown = req.body?.numbers;
+      const list = Array.isArray(raw) ? Array.from(new Set(raw.map((x) => String(x).trim()))) : [];
+      if (list.length === 0) return fail(res, 400, '请先输入至少一个6位号码');
+      if (list.length > 200) return fail(res, 400, '一次最多处理 200 个号码');
+      const bad = list.find((x) => !/^\d{6}$/.test(x));
+      if (bad) return fail(res, 400, `“${bad}”不是6位数字，请修改或删除`);
+
+      if (action === 'save_picks') {
+        const targetDraw = String(req.body?.targetDraw ?? '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDraw)) return fail(res, 400, '开奖日期格式不对');
+        if (list.length > 20) return fail(res, 400, '一次最多保存 20 个号码');
+        const batch = await sql`
+          INSERT INTO batches (user_id, method, target_draw, params)
+          VALUES (${user.id}, 'photo', ${targetDraw}, ${JSON.stringify({ months: Number(req.body?.months ?? 12) })})
+          RETURNING id
+        `;
+        const batchId = Number(batch[0].id);
+        for (const num of list) {
+          await sql`INSERT INTO picks (batch_id, user_id, number) VALUES (${batchId}, ${user.id}, ${num})`;
+        }
+        return res.status(200).json({ success: true, batchId });
+      }
+
+      const cutoff = cutoffFromMonths(Number(req.body?.months ?? 12));
+      const all = await loadDraws(sql);
+      const draws = cutoff ? all.filter((d) => d.date >= cutoff) : all;
+      const bazi = await loadBazi(sql, user.id);
+      const p = await sql`SELECT lucky_number FROM profiles WHERE user_id = ${user.id}`;
+      const lucky = p[0]?.lucky_number === null || p[0]?.lucky_number === undefined ? null : Number(p[0].lucky_number);
+      const results = list
+        .map((n) => scoreNumber(n, draws, bazi ? bazi.favorable : null, lucky))
+        .sort((a, b) => b.overall - a.overall || (a.input < b.input ? -1 : 1));
+      return res.status(200).json({
+        success: true,
+        results: results.map((r, i) => (i < 3 ? r : { input: r.input, overall: r.overall, best: r.best })),
         basedOn: draws.length,
       });
     }
