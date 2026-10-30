@@ -8,6 +8,7 @@ import { api } from './api.ts';
 export interface NextDraw {
   dateText: string; // 例如 "2026年11月1日 周日"
   daysLeft: number; // 0 表示就是今天
+  iso: string; // 例如 2026-11-01
 }
 
 // 取"泰国当地时间"的今天日期（年、月、日）
@@ -36,7 +37,7 @@ export function getNextDraw(now: Date = new Date()): NextDraw {
     day: 'numeric',
     weekday: 'short',
   });
-  return { dateText, daysLeft: Math.round((next - todayUtc) / 86400000) };
+  return { dateText, daysLeft: Math.round((next - todayUtc) / 86400000), iso: new Date(next).toISOString().slice(0, 10) };
 }
 
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);

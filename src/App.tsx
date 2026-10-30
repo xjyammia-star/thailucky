@@ -8,8 +8,9 @@ import Home from './Home.tsx';
 import Settings from './Settings.tsx';
 import Admin from './Admin.tsx';
 import Draws from './Draws.tsx';
+import Pick from './Pick.tsx';
 
-type Tab = 'home' | 'draws' | 'settings' | 'admin';
+type Tab = 'home' | 'pick' | 'draws' | 'settings' | 'admin';
 
 interface MeResponse {
   user: CurrentUser | null;
@@ -64,6 +65,7 @@ export default function App() {
     <>
       <div className="app">
         {tab === 'home' && <Home user={user} goSettings={() => setTab('settings')} goDraws={() => setTab('draws')} />}
+        {tab === 'pick' && <Pick goSettings={() => setTab('settings')} />}
         {tab === 'draws' && <Draws isAdmin={user.isAdmin} />}
         {tab === 'settings' && (
           <Settings
@@ -76,6 +78,7 @@ export default function App() {
 
       <nav className="nav">
         <button className={tab === 'home' ? 'on' : ''} onClick={() => setTab('home')}>首页</button>
+        <button className={tab === 'pick' ? 'on' : ''} onClick={() => setTab('pick')}>选号</button>
         <button className={tab === 'draws' ? 'on' : ''} onClick={() => setTab('draws')}>开奖</button>
         <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>设置</button>
         {user.isAdmin && (

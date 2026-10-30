@@ -84,3 +84,7 @@ Thailucky/
 ## 开奖数据来源
 
 自动获取使用 GitHub 开源数据集 huayreview/thai-lottery-results（整理自泰国政府彩票局官方结果，CC BY 4.0，出处：huayreview.net）。该数据集由作者定期更新，刚开奖后可能晚几天才有；缺失时可在【管理】页用 md 导入补上。
+
+## 第3步A升级（选号）
+
+升级后需要：管理员到【管理】页点一次"更新数据库结构"（新增 batches、picks 两张表）。新增"选号"页，使用 lunar-javascript 计算八字。

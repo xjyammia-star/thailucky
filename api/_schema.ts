@@ -63,4 +63,28 @@ export async function initTables(sql: Sql) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+
+  // 选号批次：每点一次"生成"保存一批；批次里的每个号码都单独存一行，并记录是否实际购买
+  await sql`
+    CREATE TABLE IF NOT EXISTS batches (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      method TEXT NOT NULL,
+      target_draw DATE NOT NULL,
+      params TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS picks (
+      id BIGSERIAL PRIMARY KEY,
+      batch_id BIGINT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      number TEXT NOT NULL,
+      bought BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS picks_user_idx ON picks (user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS batches_user_idx ON batches (user_id, created_at DESC)`;
 }
