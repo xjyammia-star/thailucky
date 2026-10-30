@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api.ts';
 import { getNextDraw } from './draw.ts';
+import { baht } from './prizes.ts';
 
 interface Bazi {
   pillars: string[];
@@ -16,16 +17,32 @@ interface Bazi {
   note: string;
 }
 
+interface Win {
+  key: string;
+  label: string;
+  amount: number | null;
+}
+
 interface PickItem {
   id: number;
   number: string;
   bought: boolean;
+  result: { wins: Win[]; total: number; incomplete: boolean } | null;
+}
+
+interface Group {
+  count: number;
+  checked: number;
+  winners: number;
+  total: number;
 }
 
 interface Batch {
   id: number;
   method: string;
   targetDraw: string;
+  drawDate: string | null;
+  state: 'checked' | 'waiting' | 'nodata';
   params: { lucky?: number; favorable?: string[]; usedBazi?: boolean };
   createdAt: string;
   picks: PickItem[];
@@ -44,10 +61,20 @@ function fmtTime(iso: string): string {
   });
 }
 
+function SummaryRow({ title, g }: { title: string; g: Group }) {
+  return (
+    <p>
+      <b>{title}</b>：{g.count} 个，已对奖 {g.checked} 个，中奖 {g.winners} 个
+      {g.total > 0 && <>，奖金合计 <b style={{ color: 'var(--red)' }}>{baht(g.total)}</b></>}
+    </p>
+  );
+}
+
 export default function Pick({ goSettings }: { goSettings: () => void }) {
   const next = useMemo(() => getNextDraw(), []);
   const [bazi, setBazi] = useState<Bazi | null | undefined>(undefined);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [summary, setSummary] = useState<{ bought: Group; all: Group } | null>(null);
   const [method, setMethod] = useState<'lucky' | 'random'>('lucky');
   const [count, setCount] = useState(5);
   const [lucky, setLucky] = useState('');
@@ -59,10 +86,11 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
     try {
       const [b, l] = await Promise.all([
         api<{ bazi: Bazi | null }>('/api/numbers?action=bazi'),
-        api<{ batches: Batch[] }>('/api/numbers?action=list'),
+        api<{ batches: Batch[]; summary: { bought: Group; all: Group } }>('/api/numbers?action=list'),
       ]);
       setBazi(b.bazi);
       setBatches(l.batches);
+      setSummary(l.summary);
       setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : '读取失败');
@@ -199,6 +227,15 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
         </p>
       </div>
 
+      {summary && summary.all.count > 0 && (
+        <div className="card">
+          <h2>对奖汇总</h2>
+          <SummaryRow title="实际购买的" g={summary.bought} />
+          <SummaryRow title="生成的全部" g={summary.all} />
+          <p className="muted">开奖数据更新后，这里会自动重新对奖。金额按每张票计算，是否领取以官方结果为准。</p>
+        </div>
+      )}
+
       <h2 style={{ margin: '18px 4px 8px' }}>我的号码记录</h2>
       {batches.length === 0 && <p className="muted">还没有生成过号码。</p>}
       {batches.map((b) => {
@@ -210,11 +247,25 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
               {b.params.lucky !== undefined && `（${String(b.params.lucky).padStart(2, '0')}）`} · 对应 {b.targetDraw} 开奖
             </div>
             <div className="muted">共 {b.picks.length} 个，实际购买 {boughtN} 个</div>
+            <div className="muted">
+              {b.state === 'checked' && `已对奖（${b.drawDate} 开奖）`}
+              {b.state === 'waiting' && '等待开奖'}
+              {b.state === 'nodata' && '已过开奖日，但还没有这一期的开奖数据（可到【开奖】页获取）'}
+            </div>
             {b.picks.map((p) => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
                 <div>
                   <div className="num">{p.number}</div>
                   <div className="muted">后三 <b>{p.number.slice(3)}</b> · 后二 <b>{p.number.slice(4)}</b></div>
+                  {p.result && p.result.wins.length > 0 && (
+                    <div style={{ color: 'var(--red)', fontWeight: 600, fontSize: 14 }}>
+                      🎉 {p.result.wins.map((w) => w.label).join('、')}
+                      {p.result.total > 0 && `　${baht(p.result.total)}`}
+                    </div>
+                  )}
+                  {p.result && p.result.wins.length === 0 && (
+                    <div className="muted">未中奖{p.result.incomplete ? '（二到五等奖数据不完整，未能完全核对）' : ''}</div>
+                  )}
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <input type="checkbox" checked={p.bought} onChange={() => toggle(p)} />

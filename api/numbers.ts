@@ -13,6 +13,9 @@ import { getDb } from './_db.js';
 import { requireUser } from './_auth.js';
 import { computeBazi } from './_bazi.js';
 import type { BaziResult } from './_bazi.js';
+import { checkNumber, findDraw } from './_check.js';
+import type { CheckResult } from './_check.js';
+import { rowToDraw } from './_draws.js';
 import { digitPool, genBatch, genLucky, genRandom } from './_gen.js';
 
 function fail(res: VercelResponse, status: number, error: string) {
@@ -106,17 +109,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         WHERE p.user_id = ${user.id} AND b.id = ANY(${batches.map((x) => x.id)})
         ORDER BY p.id
       `;
-      const out = batches.map((bt) => ({
-        id: Number(bt.id),
-        method: bt.method as string,
-        targetDraw: bt.target_draw as string,
-        params: bt.params ? JSON.parse(String(bt.params)) : {},
-        createdAt: new Date(bt.created_at as string).toISOString(),
-        picks: picks
+      const drawRows = batches.length
+        ? await sql`
+            SELECT draw_date::text AS draw_date, first_prize, near_first, front3, back3, back2,
+                   prize2, prize3, prize4, prize5
+            FROM draws WHERE draw_date >= ${batches.reduce((m, b) => (String(b.target_draw) < m ? String(b.target_draw) : m), '9999-12-31')}::date
+          `
+        : [];
+      const draws = drawRows.map(rowToDraw);
+      const bangkokToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
+
+      const sum = {
+        bought: { count: 0, checked: 0, winners: 0, total: 0 },
+        all: { count: 0, checked: 0, winners: 0, total: 0 },
+      };
+      const out = batches.map((bt) => {
+        const draw = findDraw(String(bt.target_draw), draws);
+        const limit = new Date(Date.parse(`${bt.target_draw}T00:00:00Z`) + 5 * 86400000).toISOString().slice(0, 10);
+        const state = draw ? 'checked' : bangkokToday > limit ? 'nodata' : 'waiting';
+        const items = picks
           .filter((p) => String(p.batch_id) === String(bt.id))
-          .map((p) => ({ id: Number(p.id), number: p.number as string, bought: p.bought as boolean })),
-      }));
-      return res.status(200).json({ success: true, batches: out });
+          .map((p) => {
+            const result: CheckResult | null = draw ? checkNumber(p.number as string, draw) : null;
+            const bought = p.bought as boolean;
+            for (const g of bought ? [sum.bought, sum.all] : [sum.all]) {
+              g.count++;
+              if (result) {
+                g.checked++;
+                if (result.wins.length > 0) g.winners++;
+                g.total += result.total;
+              }
+            }
+            return { id: Number(p.id), number: p.number as string, bought, result };
+          });
+        return {
+          id: Number(bt.id),
+          method: bt.method as string,
+          targetDraw: bt.target_draw as string,
+          drawDate: draw ? draw.date : null,
+          state,
+          params: bt.params ? JSON.parse(String(bt.params)) : {},
+          createdAt: new Date(bt.created_at as string).toISOString(),
+          picks: items,
+        };
+      });
+      return res.status(200).json({ success: true, batches: out, summary: sum });
     }
 
     if (req.method === 'POST' && action === 'mark') {
