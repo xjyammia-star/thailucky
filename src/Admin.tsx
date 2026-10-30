@@ -52,6 +52,7 @@ export default function Admin({ currentUserId }: Props) {
   const [mdText, setMdText] = useState('');
   const [preview, setPreview] = useState<PreviewItem[] | null>(null);
   const [importing, setImporting] = useState(false);
+  const [updatingDb, setUpdatingDb] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -100,8 +101,10 @@ export default function Admin({ currentUserId }: Props) {
     run(() => api('/api/users?action=delete', { method: 'POST', body: { userId: u.id } }), '账号已删除');
   }
 
-  function updateDb() {
-    run(() => api('/api/auth?action=init_db', { method: 'POST' }), '数据库结构已更新');
+  async function updateDb() {
+    setUpdatingDb(true);
+    await run(() => api('/api/auth?action=init_db', { method: 'POST' }), '数据库结构已更新完成（用户、个人设置、开奖数据等表都已就绪）');
+    setUpdatingDb(false);
   }
 
   // ---------- 开奖数据 ----------
@@ -185,8 +188,12 @@ export default function Admin({ currentUserId }: Props) {
       <h1 className="page-title">管理</h1>
       <p className="page-sub">管理家人的登录账号和开奖数据。你看不到家人的生辰信息和选号记录。</p>
 
-      {err && <div className="error">{err}</div>}
-      {msg && <div className="success">{msg}</div>}
+      {(err || msg) && (
+        <div className="flash">
+          {err && <div className="error">{err}</div>}
+          {msg && <div className="success">{msg}</div>}
+        </div>
+      )}
 
       <div className="card">
         <h2>账号列表</h2>
@@ -302,7 +309,9 @@ export default function Admin({ currentUserId }: Props) {
         <p className="muted">
           每次升级功能需要新增数据表时，我会提醒你点一下这个按钮。重复点击是安全的，不会删除任何已有数据。
         </p>
-        <button className="btn ghost" onClick={updateDb}>更新数据库结构</button>
+        <button className="btn ghost" onClick={updateDb} disabled={updatingDb}>
+          {updatingDb ? '更新中…' : '更新数据库结构'}
+        </button>
       </div>
     </>
   );

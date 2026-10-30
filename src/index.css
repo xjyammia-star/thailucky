@@ -164,3 +164,19 @@ button, input, select { font: inherit; color: inherit; }
 .preview { font-size: 14px; border-top: 1px solid var(--line); padding: 8px 0; }
 .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
 textarea.big-text { width: 100%; min-height: 120px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font: inherit; font-size: 13px; }
+
+/* 提示条：固定在屏幕上方，页面再长也能看到操作结果 */
+.flash {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  margin-bottom: 12px;
+}
+.flash .error, .flash .success {
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid currentColor;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
