@@ -1,96 +1,102 @@
 // 自动获取开奖数据的"来源"（内部用，不是接口）。
-// 目前只接了一个开源接口：lotto.api.rayriffy.com（它的数据来自 Sanook 网站）。
-// 这个接口是第三方维护的，哪天停了或改了格式，【管理】页的"检测数据源"会告诉我们原因，
-// 到时换来源只需要改这个文件，其他部分不受影响。
+// 来源：GitHub 上的开源数据集 huayreview/thai-lottery-results（整理自泰国政府彩票局官方结果，CC BY 4.0 许可，
+// 使用时需注明出处，页面底部已标注）。它是一个静态 JSON 文件，比第三方接口稳定得多。
+// 它由作者定期更新，所以刚开奖后可能晚几天才有；这时可以在【管理】页用 md 导入补上。
+// 哪天它停更或改了格式，【管理】页的"检测数据源"会告诉我们原因，换来源只需要改这个文件。
 
 import type { RawDraw } from './_draws.js';
 
-const BASE = 'https://lotto.api.rayriffy.com';
+const DATA_URL = 'https://raw.githubusercontent.com/huayreview/thai-lottery-results/main/thai-lottery-results.json';
 
 export interface ListItem {
-  id: string; // 例如 16102559（日月佛历年）
-  date: string; // 例如 2016-10-16
+  id: string; // 这个来源里用日期当编号，例如 2026-10-16
+  date: string;
 }
 
-async function getJson(url: string, timeoutMs = 8000): Promise<unknown> {
+type Obj = Record<string, unknown>;
+const asObj = (v: unknown): Obj => (v && typeof v === 'object' ? (v as Obj) : {});
+
+async function getText(url: string, timeoutMs = 20000): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
+    const res = await fetch(url, { signal: ctrl.signal });
     const text = await res.text();
     if (!res.ok) throw new Error(`HTTP ${res.status}：${text.slice(0, 120)}`);
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error(`返回的不是JSON：${text.slice(0, 120)}`);
-    }
+    return text;
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') throw new Error('等待超时（8秒没有响应）');
+    if (err instanceof Error && err.name === 'AbortError') throw new Error('等待超时（20秒没有响应）');
     throw err;
   } finally {
     clearTimeout(timer);
   }
 }
 
-// "16102559" → "2016-10-16"（泰国佛历年 - 543 = 公历年）
-export function idToDate(id: string): string | null {
-  const m = /^(\d{2})(\d{2})(\d{4})$/.exec(id);
-  if (!m) return null;
-  const year = Number(m[3]) - 543;
-  return `${year}-${m[2]}-${m[1]}`;
+// 数据集里的一个号码字段，可能是数组，也可能是用 ; 分隔的文字，统一转成文字数组
+function toList(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter((x) => x !== '');
+  if (typeof v === 'string') return v.split(/[;,\s]+/).map((x) => x.trim()).filter((x) => x !== '');
+  if (typeof v === 'number') return [String(v)];
+  return [];
 }
 
-type Obj = Record<string, unknown>;
-const asObj = (v: unknown): Obj => (v && typeof v === 'object' ? (v as Obj) : {});
-
-// 取列表的某一页（新的在前）
-export async function fetchList(page: number): Promise<ListItem[]> {
-  const data = asObj(await getJson(`${BASE}/list/${page}`));
-  const arr = Array.isArray(data.response) ? data.response : [];
-  const items: ListItem[] = [];
-  for (const it of arr) {
-    const id = String(asObj(it).id ?? '');
-    const date = idToDate(id);
-    if (date) items.push({ id, date });
-  }
-  return items;
-}
-
-// 把接口返回的"一期结果"转成标准的原始格式
-export function mapRayriffy(data: unknown, date: string): RawDraw {
-  const resp = asObj(asObj(data).response);
-  const raw: RawDraw = { date };
-
-  const take = (list: unknown, matcher: (id: string) => boolean): string[] | undefined => {
-    if (!Array.isArray(list)) return undefined;
-    for (const p of list) {
-      const o = asObj(p);
-      const id = String(o.id ?? '').toLowerCase();
-      if (matcher(id) && Array.isArray(o.number)) return o.number.map((n) => String(n));
-    }
-    return undefined;
+export function mapDataset(row: unknown): RawDraw | null {
+  const o = asObj(row);
+  const date = String(o.draw_date ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const opt = (v: unknown) => {
+    const l = toList(v);
+    return l.length > 0 ? l : undefined;
   };
+  return {
+    date,
+    first: toList(o.first_prize)[0],
+    near: opt(o.near_first_prize),
+    prize2: opt(o.second_prize),
+    prize3: opt(o.third_prize),
+    prize4: opt(o.fourth_prize),
+    prize5: opt(o.fifth_prize),
+    front3: opt(o.front_three_digits),
+    back3: opt(o.last_three_digits),
+    back2: opt(o.last_two_digits),
+  };
+}
 
-  const prizes = resp.prizes;
-  const running = resp.runningNumbers;
+// 同一次请求里只下载一次（文件约一两兆）
+let cache: { at: number; rows: RawDraw[] } | null = null;
 
-  raw.first = take(prizes, (id) => id.includes('first') && !id.includes('near'))?.[0];
-  raw.near = take(prizes, (id) => id.includes('near'));
-  raw.prize2 = take(prizes, (id) => id.includes('second'));
-  raw.prize3 = take(prizes, (id) => id.includes('third'));
-  raw.prize4 = take(prizes, (id) => id.includes('fourth') || id.includes('forth'));
-  raw.prize5 = take(prizes, (id) => id.includes('fifth'));
-  raw.front3 = take(running, (id) => id.includes('frontthree'));
-  raw.back3 = take(running, (id) => id.includes('backthree'));
-  raw.back2 = take(running, (id) => id.includes('backtwo'));
-  return raw;
+async function loadAll(): Promise<RawDraw[]> {
+  if (cache && Date.now() - cache.at < 60_000) return cache.rows;
+  const text = await getText(DATA_URL);
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`返回的不是JSON：${text.slice(0, 80)}`);
+  }
+  const arr = Array.isArray(json) ? json : asObj(json).draws;
+  if (!Array.isArray(arr)) throw new Error('数据格式变了：找不到 draws 列表');
+  const rows: RawDraw[] = [];
+  for (const r of arr) {
+    const m = mapDataset(r);
+    if (m) rows.push(m);
+  }
+  if (rows.length === 0) throw new Error('数据集里没有读到任何一期');
+  rows.sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? 1 : -1)); // 新的在前
+  cache = { at: Date.now(), rows };
+  return rows;
+}
+
+// 保持和原来一样的用法：第1页 = 全部期号（新的在前），第2页起为空
+export async function fetchList(page: number): Promise<ListItem[]> {
+  if (page > 1) return [];
+  return (await loadAll()).map((r) => ({ id: r.date ?? '', date: r.date ?? '' }));
 }
 
 export async function fetchDraw(id: string): Promise<RawDraw> {
-  const date = idToDate(id);
-  if (!date) throw new Error(`无法识别的期号：${id}`);
-  const data = await getJson(`${BASE}/lotto/${id}`);
-  return mapRayriffy(data, date);
+  const hit = (await loadAll()).find((r) => r.date === id);
+  if (!hit) throw new Error(`数据集里没有 ${id} 这一期`);
+  return hit;
 }
 
 // 检测：从你的服务器实际去试一遍，返回每一步的结果（给【管理】页显示）
@@ -107,17 +113,17 @@ export async function checkSource(): Promise<CheckStep[]> {
   try {
     const items = await fetchList(1);
     if (items.length === 0) {
-      steps.push({ name: '读取开奖列表', ok: false, detail: '接口能连上，但没有返回任何期号（格式可能变了）' });
+      steps.push({ name: '下载开奖数据集', ok: false, detail: '能连上，但没有读到任何期号（格式可能变了）' });
     } else {
       firstId = items[0].id;
       steps.push({
-        name: '读取开奖列表',
+        name: '下载开奖数据集',
         ok: true,
-        detail: `成功，第1页有 ${items.length} 期，最新一期是 ${items[0].date}`,
+        detail: `成功，共 ${items.length} 期，最新一期是 ${items[0].date}`,
       });
     }
   } catch (err) {
-    steps.push({ name: '读取开奖列表', ok: false, detail: err instanceof Error ? err.message : String(err) });
+    steps.push({ name: '下载开奖数据集', ok: false, detail: err instanceof Error ? err.message : String(err) });
   }
 
   if (firstId) {
