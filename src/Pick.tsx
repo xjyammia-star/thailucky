@@ -1,6 +1,6 @@
 // 选号页：八字五行 + 生成号码（指定数字 / 纯随机）+ 历史批次（标记实际购买、买票提示）
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.ts';
 import { getNextDraw } from './draw.ts';
 import { baht } from './prizes.ts';
@@ -185,6 +185,7 @@ export default function Pick() {
   const [lucky, setLucky] = useState('');
   const [hotMonths, setHotMonths] = useState(12);
   const [scoreInput, setScoreInput] = useState('');
+  const scoreBox = useRef<HTMLTextAreaElement>(null);
   const [scoreRes, setScoreRes] = useState<ScoreResult[] | null>(null);
   const [anMode, setAnMode] = useState<'hot' | 'cold'>('hot');
   const [mh, setMh] = useState(['', '', '']);
@@ -358,8 +359,9 @@ export default function Pick() {
         {method === 'score' && (
           <>
             <div className="field">
-              <label>输入号码，每行一个，每行最多 6 位（少于 6 位按最后几位计算，至少 2 位）</label>
+              <label>输入号码，每行一个，每行最多 6 位（数字键盘没有回车键，点下面的“换行”按钮；少于 6 位按最后几位计算，至少 2 位）</label>
               <textarea
+                ref={scoreBox}
                 rows={5}
                 inputMode="numeric"
                 value={scoreInput}
@@ -375,6 +377,17 @@ export default function Pick() {
                 placeholder={'每行一个号码，例如：\n123456\n56\n789'}
                 style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 20, letterSpacing: 2, boxSizing: 'border-box' }}
               />
+              <button
+                type="button"
+                className="btn ghost small"
+                style={{ marginTop: 8 }}
+                onClick={() => {
+                  setScoreInput((v) => (v === '' || v.endsWith('\n') ? v : v + '\n'));
+                  scoreBox.current?.focus();
+                }}
+              >
+                ↵ 换行，输入下一个号码
+              </button>
               <p className="muted" style={{ marginTop: 4 }}>已输入 {scoreLines().length} 个号码（最多 30 个）</p>
             </div>
             <div className="field">
