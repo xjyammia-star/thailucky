@@ -5,6 +5,21 @@ import { api } from './api.ts';
 import { getNextDraw } from './draw.ts';
 import { baht } from './prizes.ts';
 
+interface ScoreUnit {
+  label: string;
+  credit: number;
+  ok: boolean;
+}
+
+interface ScoreResult {
+  input: string;
+  covered: string;
+  overall: number;
+  best: string;
+  components: { key: string; label: string; pct: number; units: ScoreUnit[] }[];
+  unavailable: string[];
+}
+
 interface Hex {
   upper: number;
   lower: number;
@@ -55,14 +70,14 @@ interface Batch {
   picks: PickItem[];
 }
 
-const METHODS: { key: 'meihua' | 'lucky' | 'random' | 'analysis'; name: string; hint: string }[] = [
+const METHODS: { key: 'meihua' | 'lucky' | 'score' | 'analysis'; name: string; hint: string }[] = [
   { key: 'meihua', name: '命理选号', hint: '依次随意填写3个0-9的数字，根据玄学生成号码' },
   { key: 'lucky', name: '指定数字', hint: '指定一个0-99的数字，其余按你的五行补全' },
   { key: 'analysis', name: '分析选号', hint: '按历史开奖统计，选出现次数最多（热号）或最少（冷号）的数字' },
-  { key: 'random', name: '纯随机', hint: '完全随机生成号码' },
+  { key: 'score', name: '选号评分', hint: '输入摊位上看中的号码，评估它和系统选号的匹配度' },
 ];
 
-const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '命理选号', analysis: '分析选号', hot: '统计热号', manual: '手动录入' };
+const METHOD_NAME: Record<string, string> = { random: '纯随机', score: '选号评分', lucky: '指定数字', meihua: '命理选号', analysis: '分析选号', hot: '统计热号', manual: '手动录入' };
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -72,6 +87,60 @@ function fmtTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function RangeChips({ value, onChange }: { value: number; onChange: (m: number) => void }) {
+  return (
+    <>
+      <label>按哪段时间的开奖数据统计</label>
+      <div className="chips">
+        {[
+          { m: 6, t: '最近半年' },
+          { m: 12, t: '最近一年' },
+          { m: 24, t: '最近两年' },
+          { m: 0, t: '全部（2021年起）' },
+        ].map((r) => (
+          <button key={r.m} className={`chip ${value === r.m ? 'on' : ''}`} onClick={() => onChange(r.m)}>
+            {r.t}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ScoreView({ r }: { r: ScoreResult }) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ textAlign: 'center' }}>
+        <div className="muted">{r.input}（{r.covered}）的最高匹配度</div>
+        <div className="num-big">{r.overall.toFixed(1)}%</div>
+        {r.best && <div className="muted">来自：{r.best}</div>}
+      </div>
+      {r.components.map((c) => (
+        <div key={c.key} style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <b>{c.label}</b>
+            <b>{c.pct.toFixed(1)}%</b>
+          </div>
+          <div style={{ background: 'var(--line)', borderRadius: 4, height: 8, marginTop: 4 }}>
+            <div style={{ width: `${c.pct}%`, background: 'var(--gold)', height: 8, borderRadius: 4 }} />
+          </div>
+          <div className="nums" style={{ marginTop: 6 }}>
+            {c.units.map((u) => (
+              <span key={u.label} style={{ opacity: u.ok ? 1 : 0.6 }}>{u.ok ? '✓' : '○'} {u.label}</span>
+            ))}
+          </div>
+        </div>
+      ))}
+      {r.unavailable.map((t) => (
+        <p key={t} className="muted">· {t}</p>
+      ))}
+      <p className="muted" style={{ marginTop: 10 }}>
+        匹配度表示这个号码和系统选号规则有多相似，100% 就是系统自己也会选出的号码。它不代表中奖概率，每个号码的中奖概率完全一样。
+      </p>
+    </div>
+  );
 }
 
 function clockText(): string {
@@ -111,10 +180,12 @@ export default function Pick() {
   const next = useMemo(() => getNextDraw(), []);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [summary, setSummary] = useState<{ bought: Group; all: Group } | null>(null);
-  const [method, setMethod] = useState<'lucky' | 'random' | 'meihua' | 'analysis'>('meihua');
+  const [method, setMethod] = useState<'lucky' | 'score' | 'meihua' | 'analysis'>('meihua');
   const [count, setCount] = useState(5);
   const [lucky, setLucky] = useState('');
   const [hotMonths, setHotMonths] = useState(12);
+  const [scoreInput, setScoreInput] = useState('');
+  const [scoreRes, setScoreRes] = useState<ScoreResult | null>(null);
   const [anMode, setAnMode] = useState<'hot' | 'cold'>('hot');
   const [mh, setMh] = useState(['', '', '']);
   const [busy, setBusy] = useState(false);
@@ -157,6 +228,23 @@ export default function Pick() {
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : '录入失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runScore() {
+    setBusy(true);
+    setErr('');
+    try {
+      const r = await api<{ score: ScoreResult }>('/api/numbers?action=score', {
+        method: 'POST',
+        body: { digits: scoreInput.trim(), months: hotMonths },
+      });
+      setScoreRes(r.score);
+    } catch (e) {
+      setScoreRes(null);
+      setErr(e instanceof Error ? e.message : '计算失败');
     } finally {
       setBusy(false);
     }
@@ -256,21 +344,32 @@ export default function Pick() {
               <button className={`chip ${anMode === 'hot' ? 'on' : ''}`} onClick={() => setAnMode('hot')}>统计热号（出现最多）</button>
               <button className={`chip ${anMode === 'cold' ? 'on' : ''}`} onClick={() => setAnMode('cold')}>统计冷号（出现最少）</button>
             </div>
-            <label>按哪段时间的开奖数据统计</label>
-            <div className="chips">
-              {[
-                { m: 6, t: '最近半年' },
-                { m: 12, t: '最近一年' },
-                { m: 24, t: '最近两年' },
-                { m: 0, t: '全部（2021年起）' },
-              ].map((r) => (
-                <button key={r.m} className={`chip ${hotMonths === r.m ? 'on' : ''}`} onClick={() => setHotMonths(r.m)}>
-                  {r.t}
-                </button>
-              ))}
-            </div>
+            <RangeChips value={hotMonths} onChange={setHotMonths} />
             <p className="muted">前4位：每个位置取这段时间出现{anMode === 'hot' ? '最多' : '最少'}的3个数字；后两位：取出现{anMode === 'hot' ? '最多' : '最少'}的10个后两位。</p>
           </div>
+        )}
+        {method === 'score' && (
+          <>
+            <div className="field">
+              <label>输入号码（6位完整号码，或最后2、3位等；少于6位按最后几位计算）</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={scoreInput}
+                onChange={(e) => setScoreInput(e.target.value.replace(/\D/g, ''))}
+                placeholder="例如 123456 或 56"
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 20, letterSpacing: 2 }}
+              />
+            </div>
+            <div className="field">
+              <RangeChips value={hotMonths} onChange={setHotMonths} />
+            </div>
+            <button className="btn block" disabled={busy || scoreInput.length < 2} onClick={runScore}>
+              {busy ? '计算中…' : '计算匹配度'}
+            </button>
+            {scoreRes && <ScoreView r={scoreRes} />}
+          </>
         )}
         {method === 'lucky' && (
           <div className="field">
@@ -278,6 +377,8 @@ export default function Pick() {
             <input type="number" min={0} max={99} value={lucky} onChange={(e) => setLucky(e.target.value)} />
           </div>
         )}
+        {method !== 'score' && (
+        <>
         <div className="field">
           <label>生成几个</label>
           <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
@@ -290,6 +391,8 @@ export default function Pick() {
           {busy ? '生成中…' : '生成并保存'}
         </button>
         <p className="muted" style={{ marginTop: 8 }}>仅供娱乐，不会提高中奖概率。</p>
+        </>
+        )}
       </div>
 
       {summary && summary.all.count > 0 && (

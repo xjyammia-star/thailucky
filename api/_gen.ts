@@ -13,11 +13,6 @@ export function digitPool(favorable: Element[]): string[] {
   return pool;
 }
 
-// 纯随机：6位全随机
-export function genRandom(): string {
-  return Array.from({ length: 6 }, digit).join('');
-}
-
 // 指定数字：把 0-99 的数字（补成2位）放在随机位置，其余位置用喜用五行的河图数填充；
 // 没有五行信息时，其余位置随机。
 export function genLucky(lucky: number, pool: string[]): string {

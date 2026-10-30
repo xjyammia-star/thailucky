@@ -1,8 +1,9 @@
 // 选号接口：每个人只能看到、操作自己的号码
 //
 // GET  /api/numbers?action=bazi           读取自己的八字五行分析
+// POST /api/numbers?action=score          选号评分（不保存）  body: { digits: '2到6位数字', months }
 // POST /api/numbers?action=generate       生成一批并保存
-//      body: { method: 'random'|'lucky'|'meihua'|'analysis', count, targetDraw, luckyNumber?, nums?: [a,b,c], months? }
+//      body: { method: 'lucky'|'meihua'|'analysis', count, targetDraw, luckyNumber?, nums?: [a,b,c], months? }
 //      分析选号另需：mode: 'hot'|'cold'，months：统计最近几个月（6/12/24，0 表示全部历史）
 // POST /api/numbers?action=add_manual     手动录入自己实际买的号码（自动标记为已购买）
 //      body: { numbers: string | string[], targetDraw }
@@ -20,8 +21,8 @@ import { checkNumber, findDraw } from './_check.js';
 import type { CheckResult } from './_check.js';
 import { rowToDraw } from './_draws.js';
 import { castMeihua, meihuaBatch, shichenNow } from './_meihua.js';
-import { digitPool, genAnalysis, genBatch, genLucky, genRandom } from './_gen.js';
-import { analysisProfile, cutoffFromMonths, loadDraws } from './_stats.js';
+import { digitPool, genAnalysis, genBatch, genLucky } from './_gen.js';
+import { analysisProfile, cutoffFromMonths, loadDraws, scoreNumber } from './_stats.js';
 
 function fail(res: VercelResponse, status: number, error: string) {
   return res.status(status).json({ success: false, error });
@@ -59,10 +60,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, bazi });
     }
 
+    if (req.method === 'POST' && action === 'score') {
+      const digits = String(req.body?.digits ?? '').trim();
+      if (!/^\d{2,6}$/.test(digits)) return fail(res, 400, '请输入 2 到 6 位数字（少于6位时，按最后几位计算）');
+      const cutoff = cutoffFromMonths(Number(req.body?.months ?? 12));
+      const all = await loadDraws(sql);
+      const draws = cutoff ? all.filter((d) => d.date >= cutoff) : all;
+      const bazi = await loadBazi(sql, user.id);
+      const p = await sql`SELECT lucky_number FROM profiles WHERE user_id = ${user.id}`;
+      const lucky = p[0]?.lucky_number ?? null;
+      return res.status(200).json({
+        success: true,
+        score: scoreNumber(digits, draws, bazi ? bazi.favorable : null, lucky === null ? null : Number(lucky)),
+        basedOn: draws.length,
+      });
+    }
+
     if (req.method === 'POST' && action === 'generate') {
       const b = req.body ?? {};
       const method = String(b.method ?? '');
-      if (method !== 'random' && method !== 'lucky' && method !== 'meihua' && method !== 'analysis') return fail(res, 400, '选号方式不对');
+      if (method !== 'lucky' && method !== 'meihua' && method !== 'analysis') return fail(res, 400, '选号方式不对');
       const count = Number(b.count);
       if (!Number.isInteger(count) || count < 1 || count > 20) return fail(res, 400, '一次生成 1 到 20 个号码');
       const targetDraw = String(b.targetDraw ?? '');
@@ -73,10 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       let numbers: string[];
       let params: Record<string, unknown>;
-      if (method === 'random') {
-        numbers = genBatch(count, genRandom);
-        params = {};
-      } else if (method === 'analysis') {
+      if (method === 'analysis') {
         const mode = b.mode === 'cold' ? 'cold' : 'hot';
         const months = Number(b.months ?? 12);
         const cutoff = cutoffFromMonths(months);
