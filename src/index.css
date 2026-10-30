@@ -151,3 +151,16 @@ button, input, select { font: inherit; color: inherit; }
 .todo { display: flex; gap: 8px; align-items: baseline; margin: 4px 0; font-size: 14px; }
 .todo .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); flex-shrink: 0; position: relative; top: 1px; }
 .todo.done .dot { background: var(--ok); }
+
+/* 开奖号码展示 */
+.section-title { font-size: 16px; margin: 18px 0 8px; color: var(--ink-soft); }
+.draw-head h2 { margin-bottom: 6px; }
+.draw-first { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.num-big { font-size: 34px; font-weight: 700; letter-spacing: 3px; color: var(--red); font-variant-numeric: tabular-nums; }
+.num { font-size: 18px; font-weight: 600; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.draw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.nums { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.nums span { font-variant-numeric: tabular-nums; font-size: 14px; background: var(--gold-soft); border-radius: 6px; padding: 1px 7px; }
+.preview { font-size: 14px; border-top: 1px solid var(--line); padding: 8px 0; }
+.mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+textarea.big-text { width: 100%; min-height: 120px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font: inherit; font-size: 13px; }

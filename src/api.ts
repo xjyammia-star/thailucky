@@ -30,3 +30,22 @@ export async function api<T = Record<string, unknown>>(
   }
   return data as T;
 }
+
+// ---------- 开奖数据的类型（前后端共用的数据长相） ----------
+
+export interface DrawSummary {
+  date: string; // 2026-10-16
+  first: string;
+  near: string[];
+  front3: string[];
+  back3: string[];
+  back2: string;
+  hasFull?: boolean; // 是否有完整的二到五等奖
+}
+
+export interface DrawFull extends DrawSummary {
+  prize2: string[] | null;
+  prize3: string[] | null;
+  prize4: string[] | null;
+  prize5: string[] | null;
+}

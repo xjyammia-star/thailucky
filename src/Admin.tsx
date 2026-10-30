@@ -1,5 +1,7 @@
-// 管理页（仅管理员）：创建/重置/删除家人的账号；更新数据库结构
-// 注意：这里只能管理账号，看不到别人的生辰和选号记录。
+// 管理页（仅管理员）：
+//   1) 家人账号：创建 / 重置密码 / 删除（只能管理账号，看不到别人的生辰和选号记录）
+//   2) 开奖数据：检测自动获取的来源、立即同步、导入整理好的 md 文档
+//   3) 更新数据库结构
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.ts';
@@ -9,6 +11,25 @@ interface UserRow {
   username: string;
   displayName: string;
   isAdmin: boolean;
+}
+
+interface CheckStep {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+interface PreviewItem {
+  title: string;
+  ok: boolean;
+  date: string | null;
+  first: string | null;
+  front3: string[] | null;
+  back3: string[] | null;
+  back2: string | null;
+  counts: number[] | null;
+  errors: string[];
+  warnings: string[];
 }
 
 interface Props {
@@ -23,6 +44,14 @@ export default function Admin({ currentUserId }: Props) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+
+  // 开奖数据相关
+  const [steps, setSteps] = useState<CheckStep[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [mdText, setMdText] = useState('');
+  const [preview, setPreview] = useState<PreviewItem[] | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -75,10 +104,86 @@ export default function Admin({ currentUserId }: Props) {
     run(() => api('/api/auth?action=init_db', { method: 'POST' }), '数据库结构已更新');
   }
 
+  // ---------- 开奖数据 ----------
+
+  async function checkSource() {
+    setChecking(true);
+    setErr('');
+    setMsg('');
+    setSteps(null);
+    try {
+      const r = await api<{ steps: CheckStep[] }>('/api/draws?action=check_source');
+      setSteps(r.steps);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '检测失败');
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function syncNow() {
+    setSyncing(true);
+    setErr('');
+    setMsg('');
+    try {
+      const r = await api<{ message: string }>('/api/draws?action=sync', { method: 'POST', body: { force: true } });
+      setMsg(r.message);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '同步失败');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setMdText(String(reader.result ?? ''));
+      setPreview(null);
+    };
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
+  }
+
+  async function doPreview() {
+    setErr('');
+    setMsg('');
+    setPreview(null);
+    try {
+      const r = await api<{ items: PreviewItem[] }>('/api/draws?action=import_preview', {
+        method: 'POST',
+        body: { text: mdText },
+      });
+      setPreview(r.items);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '识别失败');
+    }
+  }
+
+  async function doImport() {
+    setImporting(true);
+    setErr('');
+    setMsg('');
+    try {
+      const r = await api<{ message: string }>('/api/draws?action=import', { method: 'POST', body: { text: mdText } });
+      setMsg(r.message);
+      setPreview(null);
+      setMdText('');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '导入失败');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  const okCount = preview?.filter((p) => p.ok).length ?? 0;
+
   return (
     <>
       <h1 className="page-title">管理</h1>
-      <p className="page-sub">管理家人的登录账号。你看不到他们的生辰信息和选号记录。</p>
+      <p className="page-sub">管理家人的登录账号和开奖数据。你看不到家人的生辰信息和选号记录。</p>
 
       {err && <div className="error">{err}</div>}
       {msg && <div className="success">{msg}</div>}
@@ -120,9 +225,82 @@ export default function Admin({ currentUserId }: Props) {
       </form>
 
       <div className="card">
+        <h2>开奖数据：自动获取</h2>
+        <p className="muted">
+          系统会在大家打开页面、发现缺少新的一期时自动去获取。下面两个按钮用来排查和手动触发。
+        </p>
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="btn ghost small" onClick={checkSource} disabled={checking}>
+            {checking ? '检测中…' : '检测数据源是否可用'}
+          </button>
+          <button className="btn ghost small" onClick={syncNow} disabled={syncing}>
+            {syncing ? '获取中…' : '立即获取今年的开奖数据'}
+          </button>
+        </div>
+        {steps && (
+          <div style={{ marginTop: 12 }}>
+            {steps.map((s) => (
+              <div key={s.name} className="preview">
+                <b className={s.ok ? 'success' : 'error'}>{s.ok ? '✓ ' : '✗ '}{s.name}</b>
+                <div className="muted">{s.detail}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>开奖数据：导入 md 文档</h2>
+        <p className="muted">
+          自动获取不可用时，用这个。格式和你整理的"泰国政府彩票_2016-10-16_中奖结果.md"一样即可，
+          一个文件里可以放很多期（每期以带日期的一级标题"# …"开头）。
+          二到五等奖可以不放，缺的话那一期就只能对头奖、邻号、前三、后三、后两位。
+          重复导入同一期会覆盖旧数据。
+        </p>
+        <div className="field">
+          <input type="file" accept=".md,.txt,text/markdown,text/plain" onChange={onPickFile} />
+        </div>
+        <div className="field">
+          <label>或者直接把内容粘贴到这里</label>
+          <textarea
+            className="big-text mono"
+            value={mdText}
+            onChange={(e) => {
+              setMdText(e.target.value);
+              setPreview(null);
+            }}
+          />
+        </div>
+        <button className="btn ghost small" onClick={doPreview} disabled={!mdText.trim()}>先识别看看</button>
+
+        {preview && (
+          <div style={{ marginTop: 12 }}>
+            {preview.map((p, i) => (
+              <div key={i} className="preview">
+                <b className={p.ok ? 'success' : 'error'}>
+                  {p.ok ? `✓ ${p.date}` : `✗ ${p.title || '无法识别的一段内容'}`}
+                </b>
+                {p.ok && (
+                  <div className="muted">
+                    头奖 {p.first}；前三 {p.front3?.join('/')}；后三 {p.back3?.join('/')}；后二 {p.back2}；
+                    二到五等奖号码数 {p.counts?.join('/')}
+                  </div>
+                )}
+                {p.errors.map((t) => <div key={t} className="error">{t}</div>)}
+                {p.warnings.map((t) => <div key={t} className="muted">提醒：{t}</div>)}
+              </div>
+            ))}
+            <button className="btn" style={{ marginTop: 10 }} onClick={doImport} disabled={importing || okCount === 0}>
+              {importing ? '导入中…' : `确认导入 ${okCount} 期`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
         <h2>更新数据库结构</h2>
         <p className="muted">
-          以后每次升级功能需要新增数据表时，我会提醒你点一下这个按钮。重复点击是安全的，不会删除任何已有数据。
+          每次升级功能需要新增数据表时，我会提醒你点一下这个按钮。重复点击是安全的，不会删除任何已有数据。
         </p>
         <button className="btn ghost" onClick={updateDb}>更新数据库结构</button>
       </div>

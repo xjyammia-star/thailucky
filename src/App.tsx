@@ -7,8 +7,9 @@ import AuthPage from './AuthPage.tsx';
 import Home from './Home.tsx';
 import Settings from './Settings.tsx';
 import Admin from './Admin.tsx';
+import Draws from './Draws.tsx';
 
-type Tab = 'home' | 'settings' | 'admin';
+type Tab = 'home' | 'draws' | 'settings' | 'admin';
 
 interface MeResponse {
   user: CurrentUser | null;
@@ -62,7 +63,8 @@ export default function App() {
   return (
     <>
       <div className="app">
-        {tab === 'home' && <Home user={user} goSettings={() => setTab('settings')} />}
+        {tab === 'home' && <Home user={user} goSettings={() => setTab('settings')} goDraws={() => setTab('draws')} />}
+        {tab === 'draws' && <Draws isAdmin={user.isAdmin} />}
         {tab === 'settings' && (
           <Settings
             onLogout={() => { setTab('home'); setMe({ user: null, needsSetup: false }); }}
@@ -74,6 +76,7 @@ export default function App() {
 
       <nav className="nav">
         <button className={tab === 'home' ? 'on' : ''} onClick={() => setTab('home')}>首页</button>
+        <button className={tab === 'draws' ? 'on' : ''} onClick={() => setTab('draws')}>开奖</button>
         <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>设置</button>
         {user.isAdmin && (
           <button className={tab === 'admin' ? 'on' : ''} onClick={() => setTab('admin')}>管理</button>

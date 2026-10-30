@@ -35,4 +35,32 @@ export async function initTables(sql: Sql) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+
+  // 开奖结果表：每期一行。多个号码用英文逗号隔开（例如 "692,885"）。
+  // 二到五等奖只有在号码数量完整时才保存，数量不对宁可留空，避免对奖出错。
+  await sql`
+    CREATE TABLE IF NOT EXISTS draws (
+      draw_date DATE PRIMARY KEY,
+      first_prize TEXT NOT NULL,
+      near_first TEXT NOT NULL,
+      front3 TEXT NOT NULL,
+      back3 TEXT NOT NULL,
+      back2 TEXT NOT NULL,
+      prize2 TEXT,
+      prize3 TEXT,
+      prize4 TEXT,
+      prize5 TEXT,
+      source TEXT NOT NULL DEFAULT 'import',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+
+  // 通用小记录表：目前用来记"上次自动同步开奖数据的时间"，防止频繁请求外部接口
+  await sql`
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 }
