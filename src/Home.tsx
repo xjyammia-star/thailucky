@@ -17,7 +17,7 @@ const PROGRESS: { text: string; done: boolean }[] = [
   { text: '开奖数据（自动获取 / md 导入 / 开奖结果页）', done: true },
   { text: '选号：八字五行、指定数字、纯随机、号码保存与标记购买', done: true },
   { text: '梅花易数起卦选号', done: true },
-  { text: '自动对奖', done: false },
+  { text: '自动对奖（含手动录入实际购买的号码）', done: true },
   { text: '统计页（与随机基准线对比）', done: false },
 ];
 
