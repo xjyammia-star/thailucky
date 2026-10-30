@@ -9,7 +9,6 @@
 //   GET  /api/draws?action=check_source     检测自动获取的来源是否可用
 //   POST /api/draws?action=import_preview   body: { text }  预览 md 文档能识别出什么（不保存）
 //   POST /api/draws?action=import           body: { text }  识别并保存 md 文档里的开奖结果
-//   POST /api/draws?action=delete           body: { date }  删除某一期（导错了可以用）
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from './_db.js';
@@ -80,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = req.query.action as string;
 
   try {
-    const isAdminAction = ['check_source', 'import_preview', 'import', 'delete'].includes(action);
+    const isAdminAction = ['check_source', 'import_preview', 'import'].includes(action);
     const user = isAdminAction ? await requireAdmin(req, res) : await requireUser(req, res);
     if (!user) return;
     const sql = getDb();
@@ -234,14 +233,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         skipped,
         message: `已导入 ${saved} 期${skipped > 0 ? `，${skipped} 期无法识别已跳过` : ''}`,
       });
-    }
-
-    // ---------- 删除某一期（管理员） ----------
-    if (req.method === 'POST' && action === 'delete') {
-      const date = String(req.body?.date ?? '');
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail(res, 400, '日期格式不对');
-      await sql`DELETE FROM draws WHERE draw_date = ${date}`;
-      return res.status(200).json({ success: true });
     }
 
     return fail(res, 400, '未知操作');

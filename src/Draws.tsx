@@ -18,7 +18,7 @@ const GROUPS: { key: 'prize2' | 'prize3' | 'prize4' | 'prize5'; label: string }[
   { key: 'prize5', label: '五等奖（100个）' },
 ];
 
-export default function Draws({ isAdmin }: Props) {
+export default function Draws(_props: Props) {
   const [draws, setDraws] = useState<DrawSummary[] | null>(null);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
@@ -99,18 +99,6 @@ export default function Draws({ isAdmin }: Props) {
     }
   }
 
-  async function remove(date: string) {
-    if (!window.confirm(`确定删除 ${date} 这一期的开奖数据吗？`)) return;
-    try {
-      await api('/api/draws?action=delete', { method: 'POST', body: { date } });
-      setOpen(null);
-      setDetail(null);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : '删除失败');
-    }
-  }
-
   return (
     <>
       <h1 className="page-title">开奖结果</h1>
@@ -161,11 +149,6 @@ export default function Draws({ isAdmin }: Props) {
                   onClick={() => setExpanded((cur) => cur.filter((x) => x !== d.date))}
                 >
                   折叠
-                </button>
-              )}
-              {isAdmin && (
-                <button className="btn danger small" style={{ marginLeft: 8 }} onClick={() => remove(d.date)}>
-                  删除这一期
                 </button>
               )}
               {open === d.date && (
