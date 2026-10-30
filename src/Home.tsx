@@ -1,4 +1,4 @@
-// 首页：下一期开奖倒计时 + 最近一期开奖结果 + 开发进度
+// 首页：下一期开奖倒计时 + 最近一期开奖结果 + 我的号码（待开奖、已确定购买的）
 
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.ts';
@@ -8,22 +8,35 @@ import DrawCard from './DrawCard.tsx';
 
 interface Props {
   user: CurrentUser;
-  goSettings: () => void;
+  goPick: () => void;
   goDraws: () => void;
 }
 
-const PROGRESS: { text: string; done: boolean }[] = [
-  { text: '登录与账号管理、个人设置', done: true },
-  { text: '开奖数据（自动获取 / md 导入 / 开奖结果页）', done: true },
-  { text: '选号：八字五行、指定数字、纯随机、号码保存与标记购买', done: true },
-  { text: '梅花易数起卦选号', done: true },
-  { text: '自动对奖（含手动录入实际购买的号码）', done: true },
-  { text: '统计页（与随机基准线对比）', done: false },
-];
+interface MyPick {
+  id: number;
+  number: string;
+  bought: boolean;
+}
 
-export default function Home({ user, goSettings, goDraws }: Props) {
+interface MyBatch {
+  targetDraw: string;
+  state: 'checked' | 'waiting' | 'nodata';
+  picks: MyPick[];
+}
+
+export default function Home({ user, goPick, goDraws }: Props) {
   const next = useMemo(() => getNextDraw(), []);
   const [latest, setLatest] = useState<DrawSummary | null>(null);
+  const [mine, setMine] = useState<MyBatch[]>([]);
+
+  // 读我的号码（没有数据库表等错误时静默忽略，不影响首页）
+  useEffect(() => {
+    api<{ batches: MyBatch[] }>('/api/numbers?action=list')
+      .then((r) => setMine(r.batches.filter((b) => b.state === 'waiting')))
+      .catch(() => undefined);
+  }, []);
+  const boughtPicks = mine.flatMap((b) => b.picks.filter((p) => p.bought).map((p) => ({ ...p, draw: b.targetDraw })));
+  const unbought = mine.reduce((n, b) => n + b.picks.filter((p) => !p.bought).length, 0);
 
   // 读最近一期；如果落后于应有的开奖日，自动同步一次后再读
   useEffect(() => {
@@ -77,17 +90,21 @@ export default function Home({ user, goSettings, goDraws }: Props) {
       )}
 
       <div className="card">
-        <h2>开发进度</h2>
-        {PROGRESS.map((p) => (
-          <div key={p.text} className={`todo ${p.done ? 'done' : ''}`}>
-            <span className="dot" />
-            <span>{p.text}</span>
-          </div>
-        ))}
-        <p className="muted" style={{ marginTop: 10 }}>
-          先到「设置」填好生辰信息，之后的选号会用到。
-        </p>
-        <button className="btn ghost small" onClick={goSettings}>去填写生辰信息</button>
+        <h2>我的号码</h2>
+        {boughtPicks.length > 0 ? (
+          <>
+            <p className="muted">已确定购买、等待开奖的号码</p>
+            <div className="nums" style={{ margin: '6px 0' }}>
+              {boughtPicks.map((p) => (
+                <span key={p.id} style={{ fontSize: 17, fontWeight: 600 }}>{p.number}</span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="muted">还没有已确定购买的号码。</p>
+        )}
+        {unbought > 0 && <p className="muted">另有 {unbought} 个已生成但还没标记购买的号码。</p>}
+        <button className="btn block" style={{ marginTop: 8 }} onClick={goPick}>去选号</button>
       </div>
 
       <p className="muted">命理选号仅作仪式感与娱乐，每期开奖是随机的，不会提高中奖概率。请量力购买。</p>

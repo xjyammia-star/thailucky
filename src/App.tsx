@@ -64,8 +64,8 @@ export default function App() {
   return (
     <>
       <div className="app">
-        {tab === 'home' && <Home user={user} goSettings={() => setTab('settings')} goDraws={() => setTab('draws')} />}
-        {tab === 'pick' && <Pick goSettings={() => setTab('settings')} />}
+        {tab === 'home' && <Home user={user} goPick={() => setTab('pick')} goDraws={() => setTab('draws')} />}
+        {tab === 'pick' && <Pick />}
         {tab === 'draws' && <Draws isAdmin={user.isAdmin} />}
         {tab === 'settings' && (
           <Settings

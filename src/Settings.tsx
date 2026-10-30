@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.ts';
 import { CITIES, OTHER_CITY } from './cities.ts';
+import BaziCard from './BaziCard.tsx';
 
 interface Profile {
   displayName: string;
@@ -37,6 +38,7 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
 
   const [oldPw, setOldPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -110,6 +112,7 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
         },
       });
       setMsg('已保存');
+      setSavedCount((c) => c + 1);
       onNameChanged();
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : '保存失败');
@@ -150,7 +153,7 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
       <form className="card" onSubmit={save}>
         <h2>基本信息</h2>
         <div className="field">
-          <label>显示名称</label>
+          <label>显示名称（首页问候用，可以填昵称）</label>
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </div>
 
@@ -219,6 +222,8 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
         {msg && <div className="success">{msg}</div>}
         <button className="btn block" type="submit" disabled={saving}>{saving ? '保存中…' : '保存'}</button>
       </form>
+
+      <BaziCard refreshKey={savedCount} />
 
       <form className="card" onSubmit={changePassword}>
         <h2>修改密码</h2>

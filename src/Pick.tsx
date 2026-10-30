@@ -5,18 +5,6 @@ import { api } from './api.ts';
 import { getNextDraw } from './draw.ts';
 import { baht } from './prizes.ts';
 
-interface Bazi {
-  pillars: string[];
-  hasHour: boolean;
-  adjustedTime: string | null;
-  dayMaster: string;
-  counts: Record<string, number>;
-  strength: string;
-  favorable: string[];
-  source: string;
-  note: string;
-}
-
 interface Hex {
   upper: number;
   lower: number;
@@ -67,8 +55,13 @@ interface Batch {
   picks: PickItem[];
 }
 
+const METHODS: { key: 'meihua' | 'lucky' | 'random'; name: string; hint: string }[] = [
+  { key: 'meihua', name: '梅花易数', hint: '依次随意填写3个0-9的数字，根据玄学生成号码' },
+  { key: 'lucky', name: '指定数字', hint: '指定一个0-99的数字，其余按你的五行补全' },
+  { key: 'random', name: '纯随机', hint: '完全随机生成号码' },
+];
+
 const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '梅花易数', manual: '手动录入' };
-const HETU: Record<string, string> = { 水: '1/6', 火: '2/7', 木: '3/8', 金: '4/9', 土: '5/0' };
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -113,9 +106,8 @@ function SummaryRow({ title, g }: { title: string; g: Group }) {
   );
 }
 
-export default function Pick({ goSettings }: { goSettings: () => void }) {
+export default function Pick() {
   const next = useMemo(() => getNextDraw(), []);
-  const [bazi, setBazi] = useState<Bazi | null | undefined>(undefined);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [summary, setSummary] = useState<{ bought: Group; all: Group } | null>(null);
   const [method, setMethod] = useState<'lucky' | 'random' | 'meihua'>('meihua');
@@ -124,7 +116,6 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
   const [mh, setMh] = useState(['', '', '']);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [openBazi, setOpenBazi] = useState(false);
   const [manualText, setManualText] = useState('');
   const [manualDate, setManualDate] = useState('');
   const [pastDates, setPastDates] = useState<string[]>([]);
@@ -132,17 +123,12 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
 
   const load = useCallback(async () => {
     try {
-      const [b, l] = await Promise.all([
-        api<{ bazi: Bazi | null }>('/api/numbers?action=bazi'),
-        api<{ batches: Batch[]; summary: { bought: Group; all: Group } }>('/api/numbers?action=list'),
-      ]);
-      setBazi(b.bazi);
+      const l = await api<{ batches: Batch[]; summary: { bought: Group; all: Group } }>('/api/numbers?action=list');
       setBatches(l.batches);
       setSummary(l.summary);
       setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : '读取失败');
-      setBazi(null);
     }
   }, []);
 
@@ -227,57 +213,23 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
 
       {err && <p className="error">{err}</p>}
 
-      <div className="card">
-        <h2>我的五行</h2>
-        {bazi === undefined && <p className="muted">加载中…</p>}
-        {bazi === null && (
-          <p className="muted">
-            还没有填写出生日期，所以暂时没有五行信息（也可以直接用纯随机）。
-            <button className="btn small ghost" style={{ marginLeft: 8 }} onClick={goSettings}>去设置</button>
-          </p>
-        )}
-        {bazi && (
-          <>
-            <p>
-              八字：<b>{bazi.pillars.join(' ')}</b>　日主：{bazi.dayMaster}（{bazi.strength}）
-            </p>
-            <p>
-              喜用五行（{bazi.source}）：
-              <b>{bazi.favorable.join('、')}</b>
-              <span className="muted">　对应数字 {bazi.favorable.map((e) => HETU[e]).join(' ')}</span>
-            </p>
-            <button className="btn small ghost" onClick={() => setOpenBazi(!openBazi)}>
-              {openBazi ? '收起详情' : '查看详情'}
-            </button>
-            {openBazi && (
-              <div style={{ marginTop: 8 }}>
-                <p className="muted">
-                  五行分布：{Object.entries(bazi.counts).map(([k, v]) => `${k}${v}`).join('　')}
-                  {bazi.adjustedTime && `　真太阳时：${bazi.adjustedTime}`}
-                </p>
-                {bazi.note && <p className="muted">{bazi.note}</p>}
-                <p className="muted">
-                  这是一个简化的推算（扶抑法），不能代替专业命理师。觉得不准，可以在【设置】里手动指定喜用五行。
-                </p>
-              </div>
-            )}
-          </>
-        )}
+      <div className="method-grid">
+        {METHODS.map((m) => (
+          <button
+            key={m.key}
+            className={`method ${method === m.key ? 'on' : ''}`}
+            onClick={() => setMethod(m.key)}
+          >
+            <b>{m.name}</b>
+            <span>{m.hint}</span>
+          </button>
+        ))}
       </div>
 
       <div className="card">
-        <h2>生成号码</h2>
-        <div className="field">
-          <label>选号方式</label>
-          <div className="chips">
-            <button className={`chip ${method === 'lucky' ? 'on' : ''}`} onClick={() => setMethod('lucky')}>指定数字</button>
-            <button className={`chip ${method === 'random' ? 'on' : ''}`} onClick={() => setMethod('random')}>纯随机</button>
-            <button className={`chip ${method === 'meihua' ? 'on' : ''}`} onClick={() => setMethod('meihua')}>梅花易数</button>
-          </div>
-        </div>
         {method === 'meihua' && (
           <div className="field">
-            <label>随心写下 3 个 0–9 的数字（现在是 {clockText()}）</label>
+            <label>3 个数字（现在是 {clockText()}）</label>
             <div className="row">
               {[0, 1, 2].map((i) => (
                 <input
@@ -292,17 +244,12 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
                 />
               ))}
             </div>
-            <p className="muted">
-              第1个数定上卦，第2个数定下卦，第3个数加当前时辰定动爻；再由本卦、互卦、变卦的数字组成号码。
-              同一批里的其他号码，是把部分数字换成它的“河图伙伴数”（1↔6、2↔7、3↔8、4↔9、5↔0，五行相同）。
-            </p>
           </div>
         )}
         {method === 'lucky' && (
           <div className="field">
-            <label>指定数字（0–99，留空则用设置里的幸运数字）</label>
+            <label>指定数字（0–99，留空用设置里的幸运数字）</label>
             <input type="number" min={0} max={99} value={lucky} onChange={(e) => setLucky(e.target.value)} />
-            <p className="muted">这个数字会被放进号码里，其余位置按你的喜用五行对应的数字填充。</p>
           </div>
         )}
         <div className="field">
@@ -316,9 +263,7 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
         <button className="btn block" disabled={busy} onClick={generate}>
           {busy ? '生成中…' : '生成并保存'}
         </button>
-        <p className="muted" style={{ marginTop: 8 }}>
-          提醒：彩票每期都是独立随机开出，选号方式只是仪式感，不会提高中奖概率，请量力而行。
-        </p>
+        <p className="muted" style={{ marginTop: 8 }}>仅供娱乐，不会提高中奖概率。</p>
       </div>
 
       <div className="card">

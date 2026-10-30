@@ -1,10 +1,10 @@
 // 开奖结果页：今年（以及导入的更早）每一期的开奖号码
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.ts';
 import type { DrawFull, DrawSummary } from './api.ts';
 import { autoSyncIfNeeded } from './draw.ts';
-import DrawCard from './DrawCard.tsx';
+import DrawCard, { formatDate } from './DrawCard.tsx';
 import { amountText } from './prizes.ts';
 
 interface Props {
@@ -25,10 +25,16 @@ export default function Draws({ isAdmin }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [detail, setDetail] = useState<DrawFull | null>(null);
+  const [expanded, setExpanded] = useState<string[]>([]); // 展开的日期；最近一期默认展开
+  const initedExpand = useRef(false);
 
   const load = useCallback(async (): Promise<DrawSummary[]> => {
     const data = await api<{ draws: DrawSummary[] }>('/api/draws?action=list');
     setDraws(data.draws);
+    if (!initedExpand.current && data.draws.length > 0) {
+      setExpanded([data.draws[0].date]);
+      initedExpand.current = true;
+    }
     return data.draws;
   }, []);
 
@@ -123,15 +129,30 @@ export default function Draws({ isAdmin }: Props) {
         </div>
       )}
 
-      {draws?.map((d) => (
+      {draws?.map((d) =>
+        !expanded.includes(d.date) ? (
+          <button key={d.date} className="date-row" onClick={() => setExpanded((cur) => [...cur, d.date])}>
+            {formatDate(d.date)}
+            <span>展开 ▾</span>
+          </button>
+        ) : (
         <DrawCard
           key={d.date}
           draw={d}
           footer={
             <div style={{ marginTop: 10 }}>
               <button className="btn ghost small" onClick={() => toggle(d.date)}>
-                {open === d.date ? '收起' : '查看全部奖号'}
+                {open === d.date ? '收起奖号' : '查看全部奖号'}
               </button>
+              {d.date !== draws[0].date && (
+                <button
+                  className="btn ghost small"
+                  style={{ marginLeft: 8 }}
+                  onClick={() => setExpanded((cur) => cur.filter((x) => x !== d.date))}
+                >
+                  折叠
+                </button>
+              )}
               {isAdmin && (
                 <button className="btn danger small" style={{ marginLeft: 8 }} onClick={() => remove(d.date)}>
                   删除这一期
@@ -160,7 +181,8 @@ export default function Draws({ isAdmin }: Props) {
             </div>
           }
         />
-      ))}
+        ),
+      )}
     </>
   );
 }
