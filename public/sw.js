@@ -1,6 +1,6 @@
 // 最简单的离线外壳：让网站可以"安装"到手机桌面，并在断网时至少能打开界面。
 // 接口（/api/）永远走网络，不缓存任何数据，避免显示过期的开奖结果或号码。
-const CACHE = 'xuanhao-shell-v1';
+const CACHE = 'xuanhao-shell-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 
