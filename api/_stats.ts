@@ -192,12 +192,14 @@ function backtest(
   K: number,
   getVals: (d: Draw) => string[],
   mode: 'hot' | 'overdue',
+  fromDate: string,
 ): Backtest {
   const START = 30;
   let trials = 0;
   let hits = 0;
   const winners = getVals(draws[0] ?? ({} as Draw)).length || 1;
   for (let i = START; i < draws.length; i++) {
+    if (draws[i].date < fromDate) continue; // 只统计所选时间范围内的开奖；选号时可以参考之前的全部历史
     const r = rank(draws.slice(0, i).map(getVals), universe);
     const sorted =
       mode === 'hot'
@@ -230,8 +232,10 @@ export interface Stats {
   verdict: { tests: number; significant: number; byChance: number };
 }
 
-export function computeStats(draws: Draw[]): Stats | null {
+export function computeStats(allDraws: Draw[], from: string | null = null): Stats | null {
+  const draws = from ? allDraws.filter((d) => d.date >= from) : allDraws;
   if (draws.length === 0) return null;
+  const btFrom = from ?? '0000-00-00';
   const six = allSix(draws);
 
   // 各位置数字
@@ -271,10 +275,10 @@ export function computeStats(draws: Draw[]): Stats | null {
   const labels = ['0个', '1个', '2个', '3个', '4个', '5个', '6个'];
 
   const backtests = [
-    backtest('后两位：每期选历史最热的5个', draws, U2, 5, (d) => [d.back2], 'hot'),
-    backtest('后两位：每期选隔得最久没出的5个', draws, U2, 5, (d) => [d.back2], 'overdue'),
-    backtest('后三位：每期选历史最热的5个', draws, U3, 5, (d) => d.back3, 'hot'),
-    backtest('后三位：每期选隔得最久没出的5个', draws, U3, 5, (d) => d.back3, 'overdue'),
+    backtest('后两位：每期选历史最热的5个', allDraws, U2, 5, (d) => [d.back2], 'hot', btFrom),
+    backtest('后两位：每期选隔得最久没出的5个', allDraws, U2, 5, (d) => [d.back2], 'overdue', btFrom),
+    backtest('后三位：每期选历史最热的5个', allDraws, U3, 5, (d) => d.back3, 'hot', btFrom),
+    backtest('后三位：每期选隔得最久没出的5个', allDraws, U3, 5, (d) => d.back3, 'overdue', btFrom),
   ];
 
   const ps = [

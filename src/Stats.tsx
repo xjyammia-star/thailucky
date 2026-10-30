@@ -38,6 +38,13 @@ interface StatsData {
   verdict: { tests: number; significant: number; byChance: number };
 }
 
+const RANGES = [
+  { months: 6, label: '最近半年' },
+  { months: 12, label: '最近一年' },
+  { months: 24, label: '最近两年' },
+  { months: 0, label: '全部（2021年起）' },
+];
+
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 const pText = (p: number) => (p < 0.001 ? '<0.001' : p.toFixed(3));
 const BIN6 = [1, 6, 15, 20, 15, 6, 1].map((x) => x / 64);
@@ -115,20 +122,31 @@ function Distribution({ title, u, labels }: { title: string; u: Uniform; labels:
 export default function Stats() {
   const [data, setData] = useState<StatsData | null | undefined>(undefined);
   const [err, setErr] = useState('');
+  const [months, setMonths] = useState(12);
 
   useEffect(() => {
-    api<{ stats: StatsData | null }>('/api/stats?action=overview')
+    setData(undefined);
+    setErr('');
+    api<{ stats: StatsData | null }>(`/api/stats?action=overview&months=${months}`)
       .then((r) => setData(r.stats))
       .catch((e) => {
         setErr(e instanceof Error ? e.message : '读取失败');
         setData(null);
       });
-  }, []);
+  }, [months]);
 
   return (
     <>
       <h1 className="page-title">统计</h1>
       <p className="page-sub">用历史开奖数据，检验数字分布有没有偏离随机。</p>
+
+      <div className="chips" style={{ marginBottom: 14 }}>
+        {RANGES.map((r) => (
+          <button key={r.months} className={`chip ${months === r.months ? 'on' : ''}`} onClick={() => setMonths(r.months)}>
+            {r.label}
+          </button>
+        ))}
+      </div>
 
       {err && <p className="error">{err}</p>}
       {data === undefined && <p className="muted">计算中…</p>}
@@ -141,6 +159,10 @@ export default function Stats() {
             <p>
               {data.range.from} 至 {data.range.to}，共 <b>{data.range.draws}</b> 期；
               头奖和二到五等奖共 <b>{data.sixCount}</b> 个 6 位号码参与统计。
+            </p>
+            <p className="muted">
+              范围越短，数字的起伏越大，容易出现看起来“特别”的数字；范围越长，结果越接近理论值。
+              检验里的 p 值已经把样本多少考虑进去了。
             </p>
           </div>
 
@@ -233,7 +255,7 @@ export default function Stats() {
                   <td>随机</td>
                   <td>检验</td>
                 </tr>
-                {data.backtests.map((b) => (
+                {data.backtests.filter((b) => b.trials > 0).map((b) => (
                   <tr key={b.label}>
                     <td style={{ textAlign: 'left' }}>{b.label}</td>
                     <td>{b.hits}/{b.trials}</td>

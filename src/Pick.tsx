@@ -56,13 +56,13 @@ interface Batch {
 }
 
 const METHODS: { key: 'meihua' | 'lucky' | 'random' | 'hot'; name: string; hint: string }[] = [
-  { key: 'meihua', name: '梅花易数', hint: '依次随意填写3个0-9的数字，根据玄学生成号码' },
+  { key: 'meihua', name: '命理选号', hint: '依次随意填写3个0-9的数字，根据玄学生成号码' },
   { key: 'lucky', name: '指定数字', hint: '指定一个0-99的数字，其余按你的五行补全' },
   { key: 'hot', name: '统计热号', hint: '参考历史开奖的数字频率生成，仅供参考' },
   { key: 'random', name: '纯随机', hint: '完全随机生成号码' },
 ];
 
-const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '梅花易数', hot: '统计热号', manual: '手动录入' };
+const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '命理选号', hot: '统计热号', manual: '手动录入' };
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
