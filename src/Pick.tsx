@@ -48,7 +48,7 @@ interface Batch {
   picks: PickItem[];
 }
 
-const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '梅花易数' };
+const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '梅花易数', manual: '手动录入' };
 const HETU: Record<string, string> = { 水: '1/6', 火: '2/7', 木: '3/8', 金: '4/9', 土: '5/0' };
 
 function fmtTime(iso: string): string {
@@ -81,6 +81,10 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [openBazi, setOpenBazi] = useState(false);
+  const [manualText, setManualText] = useState('');
+  const [manualDate, setManualDate] = useState('');
+  const [pastDates, setPastDates] = useState<string[]>([]);
+  const [manualMsg, setManualMsg] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -100,7 +104,30 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
 
   useEffect(() => {
     load();
+    // 录入时可选择已开奖的日期（用来核对已经开过的奖）
+    api<{ draws: { date: string }[] }>('/api/draws?action=list')
+      .then((r) => setPastDates(r.draws.slice(0, 12).map((d) => d.date)))
+      .catch(() => undefined);
   }, [load]);
+
+  async function addManual() {
+    setErr('');
+    setManualMsg('');
+    setBusy(true);
+    try {
+      const r = await api<{ count: number }>('/api/numbers?action=add_manual', {
+        method: 'POST',
+        body: { numbers: manualText, targetDraw: manualDate || next.iso },
+      });
+      setManualText('');
+      setManualMsg(`已录入 ${r.count} 个号码，并已标记为“已购买”`);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '录入失败');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function generate() {
     setBusy(true);
@@ -227,11 +254,39 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
         </p>
       </div>
 
+      <div className="card">
+        <h2>录入我实际买的号码</h2>
+        <p className="muted">买的票不一定是系统生成的，可以把票上的6位号码录进来，开奖后自动对奖。</p>
+        <div className="field">
+          <label>号码（可一次输入多个，用空格、逗号或换行隔开）</label>
+          <textarea
+            rows={3}
+            value={manualText}
+            onChange={(e) => setManualText(e.target.value)}
+            placeholder="例如：123456 654321"
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 16 }}
+          />
+        </div>
+        <div className="field">
+          <label>对应哪一期开奖</label>
+          <select value={manualDate || next.iso} onChange={(e) => setManualDate(e.target.value)}>
+            <option value={next.iso}>{next.iso}（下一期）</option>
+            {pastDates.filter((d) => d !== next.iso).map((d) => (
+              <option key={d} value={d}>{d}（已开奖）</option>
+            ))}
+          </select>
+        </div>
+        <button className="btn block" disabled={busy || manualText.trim() === ''} onClick={addManual}>
+          保存并对奖
+        </button>
+        {manualMsg && <p className="muted" style={{ color: 'var(--ink)' }}>{manualMsg}</p>}
+      </div>
+
       {summary && summary.all.count > 0 && (
         <div className="card">
           <h2>对奖汇总</h2>
           <SummaryRow title="实际购买的" g={summary.bought} />
-          <SummaryRow title="生成的全部" g={summary.all} />
+          <SummaryRow title="全部记录" g={summary.all} />
           <p className="muted">开奖数据更新后，这里会自动重新对奖。金额按每张票计算，是否领取以官方结果为准。</p>
         </div>
       )}

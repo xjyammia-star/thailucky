@@ -3,6 +3,8 @@
 // GET  /api/numbers?action=bazi           读取自己的八字五行分析
 // POST /api/numbers?action=generate       生成一批并保存
 //      body: { method: 'random'|'lucky', count, targetDraw, luckyNumber? }
+// POST /api/numbers?action=add_manual     手动录入自己实际买的号码（自动标记为已购买）
+//      body: { numbers: string | string[], targetDraw }
 // GET  /api/numbers?action=list           自己的所有批次（新的在前）
 // POST /api/numbers?action=mark           标记某个号码"实际购买/取消购买"  body: { pickId, bought }
 // POST /api/numbers?action=mark_batch     整批标记  body: { batchId, bought }
@@ -95,6 +97,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await sql`INSERT INTO picks (batch_id, user_id, number) VALUES (${batchId}, ${user.id}, ${num})`;
       }
       return res.status(200).json({ success: true, batchId });
+    }
+
+    if (req.method === 'POST' && action === 'add_manual') {
+      const b = req.body ?? {};
+      const raw: string[] = Array.isArray(b.numbers) ? b.numbers.map(String) : String(b.numbers ?? '').split(/[\s,，;；、]+/);
+      const numbers = raw.map((x) => x.trim()).filter((x) => x !== '');
+      if (numbers.length === 0) return fail(res, 400, '请输入至少一个号码');
+      if (numbers.length > 50) return fail(res, 400, '一次最多录入 50 个号码');
+      const badNum = numbers.find((x) => !/^\d{6}$/.test(x));
+      if (badNum) return fail(res, 400, `“${badNum}”不是6位数字，请检查`);
+      const targetDraw = String(b.targetDraw ?? '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDraw)) return fail(res, 400, '开奖日期格式不对');
+
+      const batch = await sql`
+        INSERT INTO batches (user_id, method, target_draw, params)
+        VALUES (${user.id}, 'manual', ${targetDraw}, '{}')
+        RETURNING id
+      `;
+      const batchId = Number(batch[0].id);
+      for (const num of numbers) {
+        await sql`INSERT INTO picks (batch_id, user_id, number, bought) VALUES (${batchId}, ${user.id}, ${num}, true)`;
+      }
+      return res.status(200).json({ success: true, batchId, count: numbers.length });
     }
 
     if (req.method === 'GET' && action === 'list') {
