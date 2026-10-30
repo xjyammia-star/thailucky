@@ -180,3 +180,6 @@ textarea.big-text { width: 100%; min-height: 120px; padding: 10px 12px; border: 
   border: 1px solid currentColor;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
+
+/* 奖金小字 */
+.amt { color: var(--red); font-size: 12px; margin-left: 4px; }

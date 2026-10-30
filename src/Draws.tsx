@@ -5,6 +5,7 @@ import { api } from './api.ts';
 import type { DrawFull, DrawSummary } from './api.ts';
 import { autoSyncIfNeeded } from './draw.ts';
 import DrawCard from './DrawCard.tsx';
+import { amountText } from './prizes.ts';
 
 interface Props {
   isAdmin: boolean;
@@ -142,7 +143,7 @@ export default function Draws({ isAdmin }: Props) {
                   {detail &&
                     GROUPS.map((g) => (
                       <div key={g.key} style={{ marginBottom: 10 }}>
-                        <div className="muted">{g.label}</div>
+                        <div className="muted">{g.label} {amountText(g.key, detail.date)}</div>
                         {detail[g.key] ? (
                           <div className="nums">
                             {detail[g.key]!.map((n, i) => (
