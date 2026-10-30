@@ -50,7 +50,7 @@ interface Batch {
   targetDraw: string;
   drawDate: string | null;
   state: 'checked' | 'waiting' | 'nodata';
-  params: { lucky?: number; favorable?: string[]; usedBazi?: boolean; clock?: string; meihua?: Meihua };
+  params: { lucky?: number; favorable?: string[]; usedBazi?: boolean; clock?: string; meihua?: Meihua; hotBack2?: string[]; basedOn?: number; months?: number };
   createdAt: string;
   picks: PickItem[];
 }
@@ -114,6 +114,7 @@ export default function Pick() {
   const [method, setMethod] = useState<'lucky' | 'random' | 'meihua' | 'hot'>('meihua');
   const [count, setCount] = useState(5);
   const [lucky, setLucky] = useState('');
+  const [hotMonths, setHotMonths] = useState(12);
   const [mh, setMh] = useState(['', '', '']);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -166,7 +167,7 @@ export default function Pick() {
     try {
       await api('/api/numbers?action=generate', {
         method: 'POST',
-        body: { method, count, targetDraw: next.iso, luckyNumber: lucky === '' ? null : Number(lucky), nums: mh },
+        body: { method, count, targetDraw: next.iso, luckyNumber: lucky === '' ? null : Number(lucky), nums: mh, months: hotMonths },
       });
       await load();
     } catch (e) {
@@ -247,6 +248,24 @@ export default function Pick() {
             </div>
           </div>
         )}
+        {method === 'hot' && (
+          <div className="field">
+            <label>按哪段时间的开奖数据统计</label>
+            <div className="chips">
+              {[
+                { m: 6, t: '最近半年' },
+                { m: 12, t: '最近一年' },
+                { m: 24, t: '最近两年' },
+                { m: 0, t: '全部（2021年起）' },
+              ].map((r) => (
+                <button key={r.m} className={`chip ${hotMonths === r.m ? 'on' : ''}`} onClick={() => setHotMonths(r.m)}>
+                  {r.t}
+                </button>
+              ))}
+            </div>
+            <p className="muted">前4位按这段时间各位置数字的出现频率抽取，后两位从这段时间出现最多的10个后两位里选。</p>
+          </div>
+        )}
         {method === 'lucky' && (
           <div className="field">
             <label>指定数字（0–99，留空用设置里的幸运数字）</label>
@@ -315,6 +334,12 @@ export default function Pick() {
               {b.params.lucky !== undefined && `（${String(b.params.lucky).padStart(2, '0')}）`} · 对应 {b.targetDraw} 开奖
             </div>
             {b.params.meihua && <MeihuaInfo m={b.params.meihua} />}
+            {b.params.hotBack2 && (
+              <div className="muted" style={{ margin: '6px 0' }}>
+                统计范围：{{ 6: '最近半年', 12: '最近一年', 24: '最近两年', 0: '2021年起全部' }[b.params.months ?? 0]}（{b.params.basedOn} 期）
+                · 热门后两位：{b.params.hotBack2.join(' ')}
+              </div>
+            )}
             <div className="muted">共 {b.picks.length} 个，实际购买 {boughtN} 个</div>
             <div className="muted">
               {b.state === 'checked' && `已对奖（${b.drawDate} 开奖）`}

@@ -19,6 +19,14 @@ export async function loadDraws(sql: Sql): Promise<Draw[]> {
   return rows.map(rowToDraw);
 }
 
+// 时间范围：months 为 6 / 12 / 24 时返回起始日期（泰国当地），其他（0）表示全部历史
+export function cutoffFromMonths(months: number): string | null {
+  if (![6, 12, 24].includes(months)) return null;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
+  const [y, m, d] = today.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 - months, d)).toISOString().slice(0, 10);
+}
+
 // ---------- 数学小工具 ----------
 
 function logGamma(x: number): number {

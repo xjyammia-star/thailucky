@@ -4,7 +4,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from './_db.js';
 import { requireUser } from './_auth.js';
-import { computeStats, loadDraws } from './_stats.js';
+import { computeStats, cutoffFromMonths, loadDraws } from './_stats.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -12,13 +12,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!user) return;
     if (req.method === 'GET' && req.query.action === 'overview') {
       const draws = await loadDraws(getDb());
-      const months = Number(req.query.months ?? 0);
-      let from: string | null = null;
-      if ([6, 12, 24].includes(months)) {
-        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
-        const [y, m, d] = today.split('-').map(Number);
-        from = new Date(Date.UTC(y, m - 1 - months, d)).toISOString().slice(0, 10);
-      }
+      const from = cutoffFromMonths(Number(req.query.months ?? 0));
       return res.status(200).json({ success: true, stats: computeStats(draws, from) });
     }
     return res.status(400).json({ success: false, error: '未知操作' });
