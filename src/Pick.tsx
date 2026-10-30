@@ -17,6 +17,25 @@ interface Bazi {
   note: string;
 }
 
+interface Hex {
+  upper: number;
+  lower: number;
+  name: string;
+}
+
+interface Meihua {
+  nums: number[];
+  shichen: string;
+  moving: number;
+  ben: Hex;
+  hu: Hex;
+  bian: Hex;
+  tiSide: string;
+  ti: string;
+  tiElement: string;
+  relations: { who: string; trigram: string; element: string; relation: string; verdict: string }[];
+}
+
 interface Win {
   key: string;
   label: string;
@@ -43,7 +62,7 @@ interface Batch {
   targetDraw: string;
   drawDate: string | null;
   state: 'checked' | 'waiting' | 'nodata';
-  params: { lucky?: number; favorable?: string[]; usedBazi?: boolean };
+  params: { lucky?: number; favorable?: string[]; usedBazi?: boolean; clock?: string; meihua?: Meihua };
   createdAt: string;
   picks: PickItem[];
 }
@@ -61,6 +80,30 @@ function fmtTime(iso: string): string {
   });
 }
 
+function clockText(): string {
+  const t = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+  const h = Number(t.slice(0, 2)) % 24;
+  const name = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'][Math.floor(((h + 1) % 24) / 2)];
+  return `${t} · ${name}时`;
+}
+
+function MeihuaInfo({ m }: { m: Meihua }) {
+  return (
+    <div className="muted" style={{ margin: '6px 0' }}>
+      <div>
+        起卦数 {m.nums.join(' ')} · {m.shichen}时 · 动{['初', '二', '三', '四', '五', '上'][m.moving - 1]}爻
+      </div>
+      <div>
+        本卦 <b>{m.ben.name}</b> → 互卦 <b>{m.hu.name}</b> → 变卦 <b>{m.bian.name}</b>
+      </div>
+      <div>
+        体卦：{m.tiSide}{m.ti}（{m.tiElement}）　
+        {m.relations.map((r) => `${r.who}${r.trigram}${r.relation}（${r.verdict}）`).join('；')}
+      </div>
+    </div>
+  );
+}
+
 function SummaryRow({ title, g }: { title: string; g: Group }) {
   return (
     <p>
@@ -75,9 +118,10 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
   const [bazi, setBazi] = useState<Bazi | null | undefined>(undefined);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [summary, setSummary] = useState<{ bought: Group; all: Group } | null>(null);
-  const [method, setMethod] = useState<'lucky' | 'random'>('lucky');
+  const [method, setMethod] = useState<'lucky' | 'random' | 'meihua'>('meihua');
   const [count, setCount] = useState(5);
   const [lucky, setLucky] = useState('');
+  const [mh, setMh] = useState(['', '', '']);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [openBazi, setOpenBazi] = useState(false);
@@ -135,7 +179,7 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
     try {
       await api('/api/numbers?action=generate', {
         method: 'POST',
-        body: { method, count, targetDraw: next.iso, luckyNumber: lucky === '' ? null : Number(lucky) },
+        body: { method, count, targetDraw: next.iso, luckyNumber: lucky === '' ? null : Number(lucky), nums: mh },
       });
       await load();
     } catch (e) {
@@ -228,9 +272,32 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
           <div className="chips">
             <button className={`chip ${method === 'lucky' ? 'on' : ''}`} onClick={() => setMethod('lucky')}>指定数字</button>
             <button className={`chip ${method === 'random' ? 'on' : ''}`} onClick={() => setMethod('random')}>纯随机</button>
-            <button className="chip" disabled style={{ opacity: 0.5 }}>梅花易数（即将上线）</button>
+            <button className={`chip ${method === 'meihua' ? 'on' : ''}`} onClick={() => setMethod('meihua')}>梅花易数</button>
           </div>
         </div>
+        {method === 'meihua' && (
+          <div className="field">
+            <label>随心写下 3 个 0–9 的数字（现在是 {clockText()}）</label>
+            <div className="row">
+              {[0, 1, 2].map((i) => (
+                <input
+                  key={i}
+                  type="number"
+                  min={0}
+                  max={9}
+                  inputMode="numeric"
+                  value={mh[i]}
+                  onChange={(e) => setMh((cur) => cur.map((v, j) => (j === i ? e.target.value.slice(-1) : v)))}
+                  style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 18, textAlign: 'center' }}
+                />
+              ))}
+            </div>
+            <p className="muted">
+              第1个数定上卦，第2个数定下卦，第3个数加当前时辰定动爻；再由本卦、互卦、变卦的数字组成号码。
+              同一批里的其他号码，是把部分数字换成它的“河图伙伴数”（1↔6、2↔7、3↔8、4↔9、5↔0，五行相同）。
+            </p>
+          </div>
+        )}
         {method === 'lucky' && (
           <div className="field">
             <label>指定数字（0–99，留空则用设置里的幸运数字）</label>
@@ -301,16 +368,20 @@ export default function Pick({ goSettings }: { goSettings: () => void }) {
               {fmtTime(b.createdAt)} · {METHOD_NAME[b.method] ?? b.method}
               {b.params.lucky !== undefined && `（${String(b.params.lucky).padStart(2, '0')}）`} · 对应 {b.targetDraw} 开奖
             </div>
+            {b.params.meihua && <MeihuaInfo m={b.params.meihua} />}
             <div className="muted">共 {b.picks.length} 个，实际购买 {boughtN} 个</div>
             <div className="muted">
               {b.state === 'checked' && `已对奖（${b.drawDate} 开奖）`}
               {b.state === 'waiting' && '等待开奖'}
               {b.state === 'nodata' && '已过开奖日，但还没有这一期的开奖数据（可到【开奖】页获取）'}
             </div>
-            {b.picks.map((p) => (
+            {b.picks.map((p, idx) => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
                 <div>
-                  <div className="num">{p.number}</div>
+                  <div className="num">
+                    {p.number}
+                    {b.params.meihua && idx === 0 && <span className="amt">卦象号码</span>}
+                  </div>
                   <div className="muted">后三 <b>{p.number.slice(3)}</b> · 后二 <b>{p.number.slice(4)}</b></div>
                   {p.result && p.result.wins.length > 0 && (
                     <div style={{ color: 'var(--red)', fontWeight: 600, fontSize: 14 }}>

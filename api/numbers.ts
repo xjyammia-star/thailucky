@@ -2,7 +2,7 @@
 //
 // GET  /api/numbers?action=bazi           读取自己的八字五行分析
 // POST /api/numbers?action=generate       生成一批并保存
-//      body: { method: 'random'|'lucky', count, targetDraw, luckyNumber? }
+//      body: { method: 'random'|'lucky'|'meihua', count, targetDraw, luckyNumber?, nums?: [a,b,c] }
 // POST /api/numbers?action=add_manual     手动录入自己实际买的号码（自动标记为已购买）
 //      body: { numbers: string | string[], targetDraw }
 // GET  /api/numbers?action=list           自己的所有批次（新的在前）
@@ -18,6 +18,7 @@ import type { BaziResult } from './_bazi.js';
 import { checkNumber, findDraw } from './_check.js';
 import type { CheckResult } from './_check.js';
 import { rowToDraw } from './_draws.js';
+import { castMeihua, meihuaBatch, shichenNow } from './_meihua.js';
 import { digitPool, genBatch, genLucky, genRandom } from './_gen.js';
 
 function fail(res: VercelResponse, status: number, error: string) {
@@ -59,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST' && action === 'generate') {
       const b = req.body ?? {};
       const method = String(b.method ?? '');
-      if (method !== 'random' && method !== 'lucky') return fail(res, 400, '选号方式不对');
+      if (method !== 'random' && method !== 'lucky' && method !== 'meihua') return fail(res, 400, '选号方式不对');
       const count = Number(b.count);
       if (!Number.isInteger(count) || count < 1 || count > 20) return fail(res, 400, '一次生成 1 到 20 个号码');
       const targetDraw = String(b.targetDraw ?? '');
@@ -73,6 +74,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'random') {
         numbers = genBatch(count, genRandom);
         params = {};
+      } else if (method === 'meihua') {
+        const arr: unknown = b.nums;
+        const nums = Array.isArray(arr) ? arr.map((x) => (x === '' || x === null ? NaN : Number(x))) : [];
+        if (nums.length !== 3 || !nums.every((n) => Number.isInteger(n) && n >= 0 && n <= 9)) {
+          return fail(res, 400, '请输入3个 0 到 9 的数字');
+        }
+        const sc = shichenNow();
+        const m = castMeihua(nums as [number, number, number], sc.num, sc.name);
+        numbers = meihuaBatch(m, count, bazi?.favorable ?? []);
+        params = { meihua: m, clock: sc.clock, favorable: bazi?.favorable ?? [], usedBazi: pool.length > 0 };
       } else {
         let lucky = b.luckyNumber;
         if (lucky === null || lucky === undefined || lucky === '') {
