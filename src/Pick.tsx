@@ -292,34 +292,6 @@ export default function Pick() {
         <p className="muted" style={{ marginTop: 8 }}>仅供娱乐，不会提高中奖概率。</p>
       </div>
 
-      <div className="card">
-        <h2>录入我实际买的号码</h2>
-        <p className="muted">买的票不一定是系统生成的，可以把票上的6位号码录进来，开奖后自动对奖。</p>
-        <div className="field">
-          <label>号码（可一次输入多个，用空格、逗号或换行隔开）</label>
-          <textarea
-            rows={3}
-            value={manualText}
-            onChange={(e) => setManualText(e.target.value)}
-            placeholder="例如：123456 654321"
-            style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 16 }}
-          />
-        </div>
-        <div className="field">
-          <label>对应哪一期开奖</label>
-          <select value={manualDate || next.iso} onChange={(e) => setManualDate(e.target.value)}>
-            <option value={next.iso}>{next.iso}（下一期）</option>
-            {pastDates.filter((d) => d !== next.iso).map((d) => (
-              <option key={d} value={d}>{d}（已开奖）</option>
-            ))}
-          </select>
-        </div>
-        <button className="btn block" disabled={busy || manualText.trim() === ''} onClick={addManual}>
-          保存并对奖
-        </button>
-        {manualMsg && <p className="muted" style={{ color: 'var(--ink)' }}>{manualMsg}</p>}
-      </div>
-
       {summary && summary.all.count > 0 && (
         <div className="card">
           <h2>对奖汇总</h2>
@@ -394,6 +366,34 @@ export default function Pick() {
       {batches.length > 0 && (
         <p className="muted">买票小提示：摊贩的票是现成印好的，可以按“后三/后二”这几位去翻找最接近的票。</p>
       )}
+    
+      <div className="card">
+        <h2>录入我实际买的号码</h2>
+        <p className="muted">买的票不一定是系统生成的，可以把票上的6位号码录进来，开奖后自动对奖。</p>
+        <div className="field">
+          <label>号码（可一次输入多个，用空格、逗号或换行隔开）</label>
+          <textarea
+            rows={3}
+            value={manualText}
+            onChange={(e) => setManualText(e.target.value)}
+            placeholder="例如：123456 654321"
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 10, fontSize: 16 }}
+          />
+        </div>
+        <div className="field">
+          <label>对应哪一期开奖</label>
+          <select value={manualDate || next.iso} onChange={(e) => setManualDate(e.target.value)}>
+            <option value={next.iso}>{next.iso}（下一期）</option>
+            {pastDates.filter((d) => d !== next.iso).map((d) => (
+              <option key={d} value={d}>{d}（已开奖）</option>
+            ))}
+          </select>
+        </div>
+        <button className="btn block" disabled={busy || manualText.trim() === ''} onClick={addManual}>
+          保存并对奖
+        </button>
+        {manualMsg && <p className="muted" style={{ color: 'var(--ink)' }}>{manualMsg}</p>}
+      </div>
     </>
   );
 }
