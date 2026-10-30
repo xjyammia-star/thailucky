@@ -1,0 +1,153 @@
+/* 全局样式：红金配色，奶油色底。颜色集中在这里，想换风格只改这些变量。 */
+:root {
+  --red: #8e2a2a;
+  --red-dark: #6f1f1f;
+  --gold: #b8912f;
+  --gold-soft: #f3e8c8;
+  --bg: #fbf6ec;
+  --card: #ffffff;
+  --ink: #2b2220;
+  --ink-soft: #6d625c;
+  --line: #e7dfd0;
+  --danger: #b3261e;
+  --ok: #2f6b3a;
+  --radius: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); }
+body { min-height: 100vh; font-size: 16px; line-height: 1.55; }
+button, input, select { font: inherit; color: inherit; }
+
+.app { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; }
+.page-title { font-size: 22px; margin: 8px 0 4px; }
+.page-sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 16px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.card h2 { font-size: 17px; margin: 0 0 10px; }
+.card p { margin: 6px 0; }
+
+.hero {
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
+  color: #fff;
+  border: none;
+}
+.hero .big { font-size: 40px; font-weight: 700; line-height: 1.1; }
+.hero .big small { font-size: 16px; font-weight: 400; margin-left: 6px; }
+.hero .muted { color: #f3dede; font-size: 13px; }
+
+.muted { color: var(--ink-soft); font-size: 13px; }
+.error { color: var(--danger); font-size: 14px; margin: 8px 0; }
+.success { color: var(--ok); font-size: 14px; margin: 8px 0; }
+.notice {
+  background: var(--gold-soft);
+  border: 1px solid #e6d49a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+/* 表单 */
+.field { margin-bottom: 14px; }
+.field > label { display: block; font-size: 14px; color: var(--ink-soft); margin-bottom: 4px; }
+.field input[type='text'],
+.field input[type='password'],
+.field input[type='date'],
+.field input[type='time'],
+.field input[type='number'],
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.field input:focus, .field select:focus { outline: 2px solid var(--gold); outline-offset: 0; }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-top: 6px; }
+
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  cursor: pointer;
+}
+.chip.on { background: var(--red); color: #fff; border-color: var(--red); }
+
+/* 按钮 */
+.btn {
+  border: none;
+  background: var(--red);
+  color: #fff;
+  padding: 11px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.btn:hover { background: var(--red-dark); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn.block { width: 100%; }
+.btn.ghost { background: transparent; color: var(--red); border: 1px solid var(--red); }
+.btn.ghost:hover { background: #f8ecec; }
+.btn.small { padding: 6px 12px; font-size: 14px; }
+.btn.danger { background: var(--danger); }
+
+/* 登录页 */
+.auth { max-width: 420px; margin: 8vh auto 0; padding: 0 16px; }
+.auth h1 { text-align: center; color: var(--red); margin-bottom: 4px; }
+.auth .tagline { text-align: center; color: var(--ink-soft); margin: 0 0 20px; font-size: 14px; }
+
+/* 底部导航 */
+.nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  background: #fff;
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav button {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 12px 4px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.nav button.on { color: var(--red); font-weight: 700; }
+
+/* 列表 */
+.list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.list-item:last-child { border-bottom: none; }
+.list-item .actions { display: flex; gap: 6px; flex-shrink: 0; }
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  background: var(--gold-soft);
+  color: #7a5d12;
+  border-radius: 6px;
+  padding: 1px 7px;
+  margin-left: 6px;
+}
+.todo { display: flex; gap: 8px; align-items: baseline; margin: 4px 0; font-size: 14px; }
+.todo .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); flex-shrink: 0; position: relative; top: 1px; }
+.todo.done .dot { background: var(--ok); }
