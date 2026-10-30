@@ -98,6 +98,76 @@ export function binomTail(n: number, k: number, p: number): number {
   return Math.min(1, s);
 }
 
+// 精确二项检验（双侧）：实际次数和理论概率比，有没有"太多"或"太少"
+export function binomTwoSided(n: number, k: number, p: number): number {
+  if (n === 0) return 1;
+  const pmf = (i: number) => Math.exp(logFact(n) - logFact(i) - logFact(n - i) + i * Math.log(p) + (n - i) * Math.log(1 - p));
+  const pk = pmf(k);
+  let s = 0;
+  for (let i = 0; i <= n; i++) {
+    const q = pmf(i);
+    if (q <= pk * (1 + 1e-9)) s += q;
+  }
+  return Math.min(1, s);
+}
+
+export interface RateTest {
+  label: string;
+  example: string;
+  count: number;
+  total: number;
+  expected: number; // 理论概率
+  p: number;
+}
+
+function rateTest(label: string, example: string, count: number, total: number, expected: number): RateTest {
+  return { label, example, count, total, expected, p: binomTwoSided(total, count, expected) };
+}
+
+// 一个6位号码的"连续相同数字"结构：127777 → [1,1,4]
+function runsOf(n: string): number[] {
+  const out: number[] = [];
+  let len = 1;
+  for (let i = 1; i < n.length; i++) {
+    if (n[i] === n[i - 1]) len++;
+    else {
+      out.push(len);
+      len = 1;
+    }
+  }
+  out.push(len);
+  return out;
+}
+
+// 6的所有拆分（有序）：每种拆分对应的6位数字串占比 = 10 × 9^(段数-1) / 10^6
+const COMPOSITIONS: number[][] = (() => {
+  const res: number[][] = [];
+  const go = (left: number, cur: number[]) => {
+    if (left === 0) {
+      res.push(cur);
+      return;
+    }
+    for (let k = 1; k <= left; k++) go(left - k, [...cur, k]);
+  };
+  go(6, []);
+  return res;
+})();
+
+function theory(pred: (runs: number[]) => boolean): number {
+  return COMPOSITIONS.filter(pred).reduce((s, c) => s + (10 * Math.pow(9, c.length - 1)) / 1_000_000, 0);
+}
+
+const sameStr = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+export interface Repeats {
+  back2Same: RateTest; // 后两位奖：两位数字相同（如 66）
+  back3Same: RateTest; // 后三位奖：三位数字相同（如 888）
+  tail2Same: RateTest; // 所有6位号码：最后两位相同
+  tail3Same: RateTest; // 所有6位号码：最后三位相同
+  runDist: Uniform & { labels: string[]; probs: number[] }; // 最长连续相同长度：1 / 2 / 3 / 4及以上（含理论占比）
+  specials: RateTest[];
+}
+
 export interface Uniform {
   counts: number[];
   total: number;
@@ -129,30 +199,29 @@ function allSix(draws: Draw[]): string[] {
   return draws.flatMap(sixDigitNumbers);
 }
 
-// ---------- 热号档案（给"统计热号"选号用）----------
+// ---------- 分析选号档案（热号 / 冷号）----------
 
-export interface HotProfile {
-  posCounts: number[][]; // 6 个位置 × 0-9 出现次数
-  hotBack2: string[]; // 后两位出现次数最多的前 10 个
+export interface AnalysisProfile {
+  posDigits: number[][]; // 前4个位置，每个位置选出的3个数字
+  tails: string[]; // 后两位候选（10个）
 }
 
-function topByCount(counts: Map<string, number>, k: number, recent: Map<string, number>): string[] {
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || (recent.get(b[0]) ?? -1) - (recent.get(a[0]) ?? -1) || (a[0] < b[0] ? -1 : 1))
-    .slice(0, k)
-    .map((e) => e[0]);
-}
-
-export function hotProfile(draws: Draw[]): HotProfile {
+// mode = hot：出现次数最多的；cold：出现次数最少的（次数相同时，隔得更久没出现的更"冷"）
+export function analysisProfile(draws: Draw[], mode: 'hot' | 'cold'): AnalysisProfile {
   const posCounts = Array.from({ length: 6 }, () => Array(10).fill(0) as number[]);
   for (const n of allSix(draws)) for (let i = 0; i < 6; i++) posCounts[i][Number(n[i])]++;
-  const c2 = new Map<string, number>();
-  const last = new Map<string, number>();
-  draws.forEach((d, i) => {
-    c2.set(d.back2, (c2.get(d.back2) ?? 0) + 1);
-    last.set(d.back2, i);
+  const posDigits = posCounts.slice(0, 4).map((counts) => {
+    const idx = counts.map((c, d) => ({ d, c }));
+    idx.sort((a, b) => (mode === 'hot' ? b.c - a.c : a.c - b.c) || a.d - b.d);
+    return idx.slice(0, 3).map((x) => x.d);
   });
-  return { posCounts, hotBack2: topByCount(c2, 10, last) };
+
+  const r = rank(draws.map((d) => [d.back2]), U2);
+  const sorted =
+    mode === 'hot'
+      ? [...r].sort((a, b) => b.count - a.count || a.gap - b.gap || (a.n < b.n ? -1 : 1))
+      : [...r].sort((a, b) => a.count - b.count || b.gap - a.gap || (a.n < b.n ? -1 : 1));
+  return { posDigits, tails: sorted.slice(0, 10).map((x) => x.n) };
 }
 
 // ---------- 完整统计 ----------
@@ -236,6 +305,7 @@ export interface Stats {
     big: Uniform & { labels: string[] };
     sum: { mean: number; expected: number; z: number; p: number };
   };
+  repeats: Repeats;
   backtests: Backtest[];
   verdict: { tests: number; significant: number; byChance: number };
 }
@@ -282,6 +352,36 @@ export function computeStats(allDraws: Draw[], from: string | null = null): Stat
   const z = (mean - 27) / sd;
   const labels = ['0个', '1个', '2个', '3个', '4个', '5个', '6个'];
 
+  // 重复数字
+  const b2same = draws.filter((d) => d.back2[0] === d.back2[1]).length;
+  const b3all = draws.flatMap((d) => d.back3);
+  const b3same = b3all.filter((x) => x[0] === x[1] && x[1] === x[2]).length;
+  const t2same = six.filter((x) => x[4] === x[5]).length;
+  const t3same = six.filter((x) => x[3] === x[4] && x[4] === x[5]).length;
+  const runList = six.map(runsOf);
+  const maxRun = (r: number[]) => Math.max(...r);
+  const runCounts = [0, 0, 0, 0];
+  for (const r of runList) runCounts[Math.min(maxRun(r), 4) - 1]++;
+  const runProbs = [1, 2, 3, 4].map((L) =>
+    theory((c) => (L === 4 ? maxRun(c) >= 4 : maxRun(c) === L)),
+  );
+  const countBy = (pred: (r: number[]) => boolean) => runList.filter(pred).length;
+  const specialDefs: { label: string; example: string; pred: (r: number[]) => boolean }[] = [
+    { label: '含连续3个及以上相同数字', example: '如 120004、666123', pred: (r) => maxRun(r) >= 3 },
+    { label: '含连续4个及以上相同数字', example: '如 127777', pred: (r) => maxRun(r) >= 4 },
+    { label: '三连对（AABBCC）', example: '如 334455', pred: (r) => sameStr(r, [2, 2, 2]) },
+    { label: '双三连（AAABBB）', example: '如 666888', pred: (r) => sameStr(r, [3, 3]) },
+    { label: '6位全部相同', example: '如 777777', pred: (r) => sameStr(r, [6]) },
+  ];
+  const repeats: Repeats = {
+    back2Same: rateTest('后两位奖：两位数字相同', '如 66', b2same, draws.length, 0.1),
+    back3Same: rateTest('后三位奖：三位数字相同', '如 888', b3same, b3all.length, 0.01),
+    tail2Same: rateTest('所有6位号码：最后两位相同', '如 xxxx55', t2same, six.length, 0.1),
+    tail3Same: rateTest('所有6位号码：最后三位相同', '如 xxx999', t3same, six.length, 0.01),
+    runDist: { ...uniformTest(runCounts, runProbs), labels: ['最长连续1个（无重复相邻）', '最长连续2个', '最长连续3个', '最长连续4个及以上'], probs: runProbs },
+    specials: specialDefs.map((d) => rateTest(d.label, d.example, countBy(d.pred), six.length, theory(d.pred))),
+  };
+
   const backtests = [
     backtest('后两位：每期选历史最热的5个', allDraws, U2, 5, (d) => [d.back2], 'hot', btFrom),
     backtest('后两位：每期选隔得最久没出的5个', allDraws, U2, 5, (d) => [d.back2], 'overdue', btFrom),
@@ -296,6 +396,12 @@ export function computeStats(allDraws: Draw[], from: string | null = null): Stat
     uniformTest(par, binom6).p,
     uniformTest(big, binom6).p,
     normalTwoSided(z),
+    repeats.back2Same.p,
+    repeats.back3Same.p,
+    repeats.tail2Same.p,
+    repeats.tail3Same.p,
+    repeats.runDist.p,
+    ...repeats.specials.map((x) => x.p),
     ...backtests.map((b) => b.p),
   ];
 
@@ -310,6 +416,7 @@ export function computeStats(allDraws: Draw[], from: string | null = null): Stat
       big: { ...uniformTest(big, binom6), labels },
       sum: { mean, expected: 27, z, p: normalTwoSided(z) },
     },
+    repeats,
     backtests,
     verdict: { tests: ps.length, significant: ps.filter((p) => p < 0.05).length, byChance: ps.length * 0.05 },
   };

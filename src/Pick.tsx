@@ -50,19 +50,19 @@ interface Batch {
   targetDraw: string;
   drawDate: string | null;
   state: 'checked' | 'waiting' | 'nodata';
-  params: { lucky?: number; favorable?: string[]; usedBazi?: boolean; clock?: string; meihua?: Meihua; hotBack2?: string[]; basedOn?: number; months?: number };
+  params: { lucky?: number; favorable?: string[]; usedBazi?: boolean; clock?: string; meihua?: Meihua; hotBack2?: string[]; mode?: 'hot' | 'cold'; tails?: string[]; posDigits?: number[][]; basedOn?: number; months?: number };
   createdAt: string;
   picks: PickItem[];
 }
 
-const METHODS: { key: 'meihua' | 'lucky' | 'random' | 'hot'; name: string; hint: string }[] = [
+const METHODS: { key: 'meihua' | 'lucky' | 'random' | 'analysis'; name: string; hint: string }[] = [
   { key: 'meihua', name: '命理选号', hint: '依次随意填写3个0-9的数字，根据玄学生成号码' },
   { key: 'lucky', name: '指定数字', hint: '指定一个0-99的数字，其余按你的五行补全' },
-  { key: 'hot', name: '统计热号', hint: '参考历史开奖的数字频率生成，仅供参考' },
+  { key: 'analysis', name: '分析选号', hint: '按历史开奖统计，选出现次数最多（热号）或最少（冷号）的数字' },
   { key: 'random', name: '纯随机', hint: '完全随机生成号码' },
 ];
 
-const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '命理选号', hot: '统计热号', manual: '手动录入' };
+const METHOD_NAME: Record<string, string> = { random: '纯随机', lucky: '指定数字', meihua: '命理选号', analysis: '分析选号', hot: '统计热号', manual: '手动录入' };
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -111,10 +111,11 @@ export default function Pick() {
   const next = useMemo(() => getNextDraw(), []);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [summary, setSummary] = useState<{ bought: Group; all: Group } | null>(null);
-  const [method, setMethod] = useState<'lucky' | 'random' | 'meihua' | 'hot'>('meihua');
+  const [method, setMethod] = useState<'lucky' | 'random' | 'meihua' | 'analysis'>('meihua');
   const [count, setCount] = useState(5);
   const [lucky, setLucky] = useState('');
   const [hotMonths, setHotMonths] = useState(12);
+  const [anMode, setAnMode] = useState<'hot' | 'cold'>('hot');
   const [mh, setMh] = useState(['', '', '']);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -167,7 +168,7 @@ export default function Pick() {
     try {
       await api('/api/numbers?action=generate', {
         method: 'POST',
-        body: { method, count, targetDraw: next.iso, luckyNumber: lucky === '' ? null : Number(lucky), nums: mh, months: hotMonths },
+        body: { method, count, targetDraw: next.iso, luckyNumber: lucky === '' ? null : Number(lucky), nums: mh, months: hotMonths, mode: anMode },
       });
       await load();
     } catch (e) {
@@ -248,8 +249,13 @@ export default function Pick() {
             </div>
           </div>
         )}
-        {method === 'hot' && (
+        {method === 'analysis' && (
           <div className="field">
+            <label>选号依据</label>
+            <div className="chips" style={{ marginBottom: 10 }}>
+              <button className={`chip ${anMode === 'hot' ? 'on' : ''}`} onClick={() => setAnMode('hot')}>统计热号（出现最多）</button>
+              <button className={`chip ${anMode === 'cold' ? 'on' : ''}`} onClick={() => setAnMode('cold')}>统计冷号（出现最少）</button>
+            </div>
             <label>按哪段时间的开奖数据统计</label>
             <div className="chips">
               {[
@@ -263,7 +269,7 @@ export default function Pick() {
                 </button>
               ))}
             </div>
-            <p className="muted">前4位按这段时间各位置数字的出现频率抽取，后两位从这段时间出现最多的10个后两位里选。</p>
+            <p className="muted">前4位：每个位置取这段时间出现{anMode === 'hot' ? '最多' : '最少'}的3个数字；后两位：取出现{anMode === 'hot' ? '最多' : '最少'}的10个后两位。</p>
           </div>
         )}
         {method === 'lucky' && (
@@ -334,6 +340,12 @@ export default function Pick() {
               {b.params.lucky !== undefined && `（${String(b.params.lucky).padStart(2, '0')}）`} · 对应 {b.targetDraw} 开奖
             </div>
             {b.params.meihua && <MeihuaInfo m={b.params.meihua} />}
+            {b.params.tails && (
+              <div className="muted" style={{ margin: '6px 0' }}>
+                {b.params.mode === 'cold' ? '统计冷号' : '统计热号'} · 统计范围：{{ 6: '最近半年', 12: '最近一年', 24: '最近两年', 0: '2021年起全部' }[b.params.months ?? 0]}（{b.params.basedOn} 期）
+                · 后两位候选：{b.params.tails.join(' ')}
+              </div>
+            )}
             {b.params.hotBack2 && (
               <div className="muted" style={{ margin: '6px 0' }}>
                 统计范围：{{ 6: '最近半年', 12: '最近一年', 24: '最近两年', 0: '2021年起全部' }[b.params.months ?? 0]}（{b.params.basedOn} 期）

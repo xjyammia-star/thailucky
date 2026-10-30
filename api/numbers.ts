@@ -2,8 +2,8 @@
 //
 // GET  /api/numbers?action=bazi           读取自己的八字五行分析
 // POST /api/numbers?action=generate       生成一批并保存
-//      body: { method: 'random'|'lucky'|'meihua'|'hot', count, targetDraw, luckyNumber?, nums?: [a,b,c], months? }
-//      months：统计热号用，统计最近几个月（6/12/24，0 表示全部历史）
+//      body: { method: 'random'|'lucky'|'meihua'|'analysis', count, targetDraw, luckyNumber?, nums?: [a,b,c], months? }
+//      分析选号另需：mode: 'hot'|'cold'，months：统计最近几个月（6/12/24，0 表示全部历史）
 // POST /api/numbers?action=add_manual     手动录入自己实际买的号码（自动标记为已购买）
 //      body: { numbers: string | string[], targetDraw }
 // GET  /api/numbers?action=list           自己的所有批次（新的在前）
@@ -20,8 +20,8 @@ import { checkNumber, findDraw } from './_check.js';
 import type { CheckResult } from './_check.js';
 import { rowToDraw } from './_draws.js';
 import { castMeihua, meihuaBatch, shichenNow } from './_meihua.js';
-import { digitPool, genBatch, genHot, genLucky, genRandom } from './_gen.js';
-import { cutoffFromMonths, hotProfile, loadDraws } from './_stats.js';
+import { digitPool, genAnalysis, genBatch, genLucky, genRandom } from './_gen.js';
+import { analysisProfile, cutoffFromMonths, loadDraws } from './_stats.js';
 
 function fail(res: VercelResponse, status: number, error: string) {
   return res.status(status).json({ success: false, error });
@@ -62,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST' && action === 'generate') {
       const b = req.body ?? {};
       const method = String(b.method ?? '');
-      if (method !== 'random' && method !== 'lucky' && method !== 'meihua' && method !== 'hot') return fail(res, 400, '选号方式不对');
+      if (method !== 'random' && method !== 'lucky' && method !== 'meihua' && method !== 'analysis') return fail(res, 400, '选号方式不对');
       const count = Number(b.count);
       if (!Number.isInteger(count) || count < 1 || count > 20) return fail(res, 400, '一次生成 1 到 20 个号码');
       const targetDraw = String(b.targetDraw ?? '');
@@ -76,15 +76,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'random') {
         numbers = genBatch(count, genRandom);
         params = {};
-      } else if (method === 'hot') {
+      } else if (method === 'analysis') {
+        const mode = b.mode === 'cold' ? 'cold' : 'hot';
         const months = Number(b.months ?? 12);
         const cutoff = cutoffFromMonths(months);
         const all = await loadDraws(sql);
         const draws = cutoff ? all.filter((d) => d.date >= cutoff) : all;
         if (draws.length === 0) return fail(res, 400, '所选范围内还没有开奖数据，请先到【开奖】页获取');
-        const prof = hotProfile(draws);
-        numbers = genBatch(count, () => genHot(prof.posCounts, prof.hotBack2));
-        params = { hotBack2: prof.hotBack2, basedOn: draws.length, months: cutoff ? months : 0 };
+        const prof = analysisProfile(draws, mode);
+        numbers = genBatch(count, () => genAnalysis(prof.posDigits, prof.tails));
+        params = { mode, posDigits: prof.posDigits, tails: prof.tails, basedOn: draws.length, months: cutoff ? months : 0 };
       } else if (method === 'meihua') {
         const arr: unknown = b.nums;
         const nums = Array.isArray(arr) ? arr.map((x) => (x === '' || x === null ? NaN : Number(x))) : [];

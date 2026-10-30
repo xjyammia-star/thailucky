@@ -40,25 +40,13 @@ export function genBatch(count: number, make: () => string): string[] {
   return [...set];
 }
 
-// 统计热号：前4位按历史频率加权随机抽取每个位置的数字，后两位从历史上出现次数最多的"后两位"里随机选
-// （历史频率和纯随机几乎没有差别，这只是另一种仪式）
-export function genHot(posCounts: number[][], hotBack2: string[]): string {
+// 分析选号：前4位每个位置从统计选出的3个数字里随机取，后两位从统计选出的10个"后两位"里随机取
+export function genAnalysis(posDigits: number[][], tails: string[]): string {
   let out = '';
   for (let i = 0; i < 4; i++) {
-    const counts = posCounts[i];
-    const total = counts.reduce((a, b) => a + b, 0);
-    if (total === 0) {
-      out += digit();
-      continue;
-    }
-    let r = randomInt(0, total);
-    let d = 0;
-    for (; d < 10; d++) {
-      r -= counts[d];
-      if (r < 0) break;
-    }
-    out += String(Math.min(d, 9));
+    const c = posDigits[i];
+    out += c && c.length > 0 ? String(c[randomInt(0, c.length)]) : digit();
   }
-  out += hotBack2.length > 0 ? hotBack2[randomInt(0, hotBack2.length)] : digit() + digit();
+  out += tails.length > 0 ? tails[randomInt(0, tails.length)] : digit() + digit();
   return out;
 }

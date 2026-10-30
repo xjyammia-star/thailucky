@@ -15,6 +15,22 @@ interface Ranked {
   count: number;
   gap: number;
 }
+interface RateTest {
+  label: string;
+  example: string;
+  count: number;
+  total: number;
+  expected: number;
+  p: number;
+}
+interface Repeats {
+  back2Same: RateTest;
+  back3Same: RateTest;
+  tail2Same: RateTest;
+  tail3Same: RateTest;
+  runDist: Uniform & { labels: string[]; probs: number[] };
+  specials: RateTest[];
+}
 interface Backtest {
   label: string;
   picks: number;
@@ -34,6 +50,7 @@ interface StatsData {
     big: Uniform & { labels: string[] };
     sum: { mean: number; expected: number; z: number; p: number };
   };
+  repeats: Repeats;
   backtests: Backtest[];
   verdict: { tests: number; significant: number; byChance: number };
 }
@@ -48,6 +65,36 @@ const RANGES = [
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 const pText = (p: number) => (p < 0.001 ? '<0.001' : p.toFixed(3));
 const BIN6 = [1, 6, 15, 20, 15, 6, 1].map((x) => x / 64);
+
+function RateTable({ rows }: { rows: RateTest[] }) {
+  const f = (x: number) => pct(x, x < 0.01 ? 3 : 2);
+  return (
+    <table className="stat-table">
+      <tbody>
+        <tr>
+          <td>情况</td>
+          <td>实际</td>
+          <td>理论</td>
+          <td>检验</td>
+        </tr>
+        {rows.map((r) => (
+          <tr key={r.label}>
+            <td style={{ textAlign: 'left' }}>
+              {r.label}
+              <div className="muted" style={{ fontSize: 11 }}>{r.example}</div>
+            </td>
+            <td>
+              {r.count}/{r.total}
+              <div>{f(r.count / r.total)}</div>
+            </td>
+            <td>{f(r.expected)}</td>
+            <td style={{ fontSize: 11 }}><PBadge p={r.p} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 function PBadge({ p }: { p: number }) {
   const low = p < 0.05;
@@ -89,6 +136,32 @@ function RankList({ title, items, mode, draws }: { title: string; items: Ranked[
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+function Distribution4({ u }: { u: Uniform & { labels: string[]; probs: number[] } }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="muted">
+        最长的一段连续相同数字有几个 <PBadge p={u.p} />
+      </div>
+      <table className="stat-table">
+        <tbody>
+          <tr>
+            <td></td>
+            <td>实际</td>
+            <td>理论</td>
+          </tr>
+          {u.labels.map((l, i) => (
+            <tr key={l}>
+              <td style={{ textAlign: 'left' }}>{l}</td>
+              <td>{pct(u.counts[i] / u.total, 2)}</td>
+              <td>{pct(u.probs[i], 3)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -239,6 +312,17 @@ export default function Stats() {
             <p className="muted">
               数字之和：平均 {data.patterns.sum.mean.toFixed(2)}（理论 {data.patterns.sum.expected}） <PBadge p={data.patterns.sum.p} />
             </p>
+          </div>
+
+          <div className="card">
+            <h2>重复数字</h2>
+            <p className="muted">最后两位、最后三位数字相同的概率，以及 6 位号码里连续相同数字的情况。</p>
+            <RateTable
+              rows={[data.repeats.back2Same, data.repeats.back3Same, data.repeats.tail2Same, data.repeats.tail3Same]}
+            />
+            <h3 style={{ fontSize: 15, margin: '14px 0 4px' }}>6 位号码里的连续相同数字</h3>
+            <Distribution4 u={data.repeats.runDist} />
+            <RateTable rows={data.repeats.specials} />
           </div>
 
           <div className="card">
