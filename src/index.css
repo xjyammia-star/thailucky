@@ -22,7 +22,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); }
 body { min-height: 100vh; font-size: 16px; line-height: 1.55; }
 button, input, select { font: inherit; color: inherit; }
 
-.app { max-width: 720px; margin: 0 auto; padding: 16px 16px 96px; }
+.app { max-width: 720px; margin: 0 auto; padding: 16px 16px 120px; }
 .page-title { font-size: 22px; margin: 8px 0 4px; }
 .page-sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 16px; }
 
@@ -114,19 +114,35 @@ button, input, select { font: inherit; color: inherit; }
   position: fixed;
   left: 0; right: 0; bottom: 0;
   display: flex;
+  gap: 6px;
   background: #fff;
   border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 16px rgba(60, 30, 20, 0.08);
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
 }
 .nav button {
   flex: 1;
-  background: none;
-  border: none;
-  padding: 12px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  background: var(--gold-soft);
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 6px 2px;
+  font-size: 15px;
   color: var(--ink-soft);
   cursor: pointer;
 }
-.nav button.on { color: var(--red); font-weight: 700; }
+.nav button .ico { font-size: 22px; line-height: 1; }
+.nav button.on {
+  background: linear-gradient(180deg, var(--red), var(--red-dark));
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(111, 31, 31, 0.35);
+}
 
 /* 列表 */
 .list-item {

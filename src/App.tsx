@@ -79,13 +79,13 @@ export default function App() {
       </div>
 
       <nav className="nav">
-        <button className={tab === 'home' ? 'on' : ''} onClick={() => setTab('home')}>首页</button>
-        <button className={tab === 'pick' ? 'on' : ''} onClick={() => setTab('pick')}>选号</button>
-        <button className={tab === 'draws' ? 'on' : ''} onClick={() => setTab('draws')}>开奖</button>
-        <button className={tab === 'stats' ? 'on' : ''} onClick={() => setTab('stats')}>统计</button>
-        <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>设置</button>
+        <button className={tab === 'home' ? 'on' : ''} onClick={() => setTab('home')}><span className="ico">🏠</span><span>首页</span></button>
+        <button className={tab === 'pick' ? 'on' : ''} onClick={() => setTab('pick')}><span className="ico">🎲</span><span>选号</span></button>
+        <button className={tab === 'draws' ? 'on' : ''} onClick={() => setTab('draws')}><span className="ico">🏆</span><span>开奖</span></button>
+        <button className={tab === 'stats' ? 'on' : ''} onClick={() => setTab('stats')}><span className="ico">📊</span><span>统计</span></button>
+        <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}><span className="ico">⚙️</span><span>设置</span></button>
         {user.isAdmin && (
-          <button className={tab === 'admin' ? 'on' : ''} onClick={() => setTab('admin')}>管理</button>
+          <button className={tab === 'admin' ? 'on' : ''} onClick={() => setTab('admin')}><span className="ico">🛠️</span><span>管理</span></button>
         )}
       </nav>
     </>
