@@ -185,7 +185,7 @@ textarea.big-text { width: 100%; min-height: 120px; padding: 10px 12px; border: 
 .amt { color: var(--red); font-size: 12px; margin-left: 4px; }
 
 /* 选号方式三选一 */
-.method-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.method-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
 .method {
   display: flex; flex-direction: column; gap: 6px; text-align: left;
   padding: 12px 10px; border: 1px solid var(--line); border-radius: 12px;
@@ -203,3 +203,8 @@ textarea.big-text { width: 100%; min-height: 120px; padding: 10px 12px; border: 
   background: #fff; color: var(--ink); font: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
 }
 .date-row span { color: var(--ink-soft); font-weight: 400; }
+
+/* 统计表格 */
+.stat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+.stat-table td { padding: 5px 4px; text-align: center; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.stat-table td:first-child { text-align: left; color: var(--ink-soft); white-space: nowrap; }

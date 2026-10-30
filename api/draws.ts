@@ -19,6 +19,7 @@ import type { Draw, RawDraw } from './_draws.js';
 import { parseDrawMarkdown } from './_parseMd.js';
 import { checkSource, fetchDraw, fetchList } from './_source.js';
 import type { ListItem } from './_source.js';
+import { HISTORY_FROM } from './_stats.js';
 
 type Sql = ReturnType<typeof getDb>;
 
@@ -28,10 +29,12 @@ function fail(res: VercelResponse, status: number, error: string) {
   return res.status(status).json({ success: false, error });
 }
 
-// 泰国当地"今年"的第一天，例如 2026-01-01
-function bangkokYearStart(): string {
-  const year = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric' }).format(new Date());
-  return `${year}-01-01`;
+// 泰国当地"半年前"的日期（开奖页只显示最近半年）
+function bangkokSixMonthsAgo(): string {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
+  const [y, m, d] = today.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1 - 6, d));
+  return dt.toISOString().slice(0, 10);
 }
 
 // 摘要：列表页只需要主要奖项，减少传输量
@@ -87,9 +90,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const rows = await sql`
         SELECT draw_date::text AS draw_date, first_prize, near_first, front3, back3, back2,
                prize2, prize3, prize4, prize5
-        FROM draws ORDER BY draw_date DESC LIMIT 200
+        FROM draws WHERE draw_date >= ${bangkokSixMonthsAgo()}::date
+        ORDER BY draw_date DESC LIMIT 200
       `;
-      return res.status(200).json({ success: true, draws: rows.map((r) => summary(rowToDraw(r))) });
+      const info = await sql`SELECT MIN(draw_date)::text AS earliest, COUNT(*)::int AS total FROM draws`;
+      const historyComplete = (await readMeta(sql, 'history_from')) === HISTORY_FROM;
+      return res.status(200).json({
+        success: true,
+        draws: rows.map((r) => summary(rowToDraw(r))),
+        earliest: info[0]?.earliest ?? null,
+        total: info[0]?.total ?? 0,
+        historyComplete,
+      });
     }
 
     // ---------- 最近一期 ----------
@@ -99,7 +111,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                prize2, prize3, prize4, prize5
         FROM draws ORDER BY draw_date DESC LIMIT 1
       `;
-      return res.status(200).json({ success: true, draw: rows.length > 0 ? rowToDraw(rows[0]) : null });
+      const historyComplete = (await readMeta(sql, 'history_from')) === HISTORY_FROM;
+      return res.status(200).json({ success: true, draw: rows.length > 0 ? rowToDraw(rows[0]) : null, historyComplete });
     }
 
     // ---------- 某一期详情 ----------
@@ -124,10 +137,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       await writeMeta(sql, 'last_sync_at', String(Date.now()));
 
-      const yearStart = bangkokYearStart();
+      const yearStart = HISTORY_FROM;
       const wanted: ListItem[] = [];
       try {
-        for (let page = 1; page <= 6; page++) {
+        for (let page = 1; page <= 10; page++) {
           const items = await fetchList(page);
           if (items.length === 0) break;
           let reachedOld = false;
@@ -147,9 +160,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const existingRows = await sql`SELECT draw_date::text AS d FROM draws`;
       const existing = new Set(existingRows.map((r) => r.d as string));
-      const todo = wanted.filter((it) => !existing.has(it.date)).slice(0, 30);
+      const missing = wanted.filter((it) => !existing.has(it.date));
+      const todo = missing.slice(0, 250);
 
-      const outcomes = await runPool(todo, 4, async (it) => {
+      const outcomes = await runPool(todo, 8, async (it) => {
         try {
           const raw: RawDraw = await fetchDraw(it.id);
           const f = finalizeDraw(raw);
@@ -161,6 +175,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       });
       const added = outcomes.filter((o) => o.ok).length;
+      if (outcomes.every((o) => o.ok) && missing.length <= todo.length) {
+        await writeMeta(sql, 'history_from', HISTORY_FROM); // 近年历史已补齐
+      }
       const failed = outcomes.filter((o) => !o.ok);
       let message = added > 0 ? `已获取 ${added} 期新的开奖结果` : '已是最新，没有新的开奖结果';
       if (failed.length > 0) message += `；有 ${failed.length} 期获取失败（${failed[0].date}：${failed[0].why}）`;

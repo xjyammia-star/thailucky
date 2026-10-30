@@ -64,8 +64,9 @@ export function needsSync(latestDate: string | null, now: Date = new Date()): bo
 // 需要时自动去同步一次（服务器端有10分钟限流，重复调用不会反复请求外部接口）
 export async function autoSyncIfNeeded(
   latestDate: string | null,
+  historyComplete = true, // false 表示近几年的历史数据还没补齐，也需要去获取
 ): Promise<{ added: number; error?: string }> {
-  if (!needsSync(latestDate)) return { added: 0 };
+  if (historyComplete && !needsSync(latestDate)) return { added: 0 };
   try {
     const r = await api<{ added: number; skipped?: boolean }>('/api/draws?action=sync', { method: 'POST', body: {} });
     return { added: r.added ?? 0 };

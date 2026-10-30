@@ -43,10 +43,10 @@ export default function Home({ user, goPick, goDraws }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const first = await api<{ draw: DrawSummary | null }>('/api/draws?action=latest');
+        const first = await api<{ draw: DrawSummary | null; historyComplete?: boolean }>('/api/draws?action=latest');
         if (cancelled) return;
         setLatest(first.draw);
-        const r = await autoSyncIfNeeded(first.draw?.date ?? null);
+        const r = await autoSyncIfNeeded(first.draw?.date ?? null, first.historyComplete !== false);
         if (r.added > 0 && !cancelled) {
           const again = await api<{ draw: DrawSummary | null }>('/api/draws?action=latest');
           if (!cancelled) setLatest(again.draw);

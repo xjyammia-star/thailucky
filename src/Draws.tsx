@@ -27,10 +27,17 @@ export default function Draws({ isAdmin }: Props) {
   const [detail, setDetail] = useState<DrawFull | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]); // 展开的日期；最近一期默认展开
   const initedExpand = useRef(false);
+  const historyOk = useRef(true);
+
+  const [earliest, setEarliest] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<DrawSummary[]> => {
-    const data = await api<{ draws: DrawSummary[] }>('/api/draws?action=list');
+    const data = await api<{ draws: DrawSummary[]; earliest: string | null; historyComplete: boolean }>(
+      '/api/draws?action=list',
+    );
     setDraws(data.draws);
+    setEarliest(data.earliest);
+    historyOk.current = data.historyComplete;
     if (!initedExpand.current && data.draws.length > 0) {
       setExpanded([data.draws[0].date]);
       initedExpand.current = true;
@@ -44,7 +51,7 @@ export default function Draws({ isAdmin }: Props) {
     (async () => {
       try {
         const list = await load();
-        const r = await autoSyncIfNeeded(list[0]?.date ?? null);
+        const r = await autoSyncIfNeeded(list[0]?.date ?? null, historyOk.current);
         if (cancelled) return;
         if (r.added > 0) {
           await load();
@@ -107,7 +114,10 @@ export default function Draws({ isAdmin }: Props) {
   return (
     <>
       <h1 className="page-title">开奖结果</h1>
-      <p className="page-sub">泰国政府彩票，每月1日和16日开奖。</p>
+      <p className="page-sub">
+        泰国政府彩票，每月1日和16日开奖。这里显示最近半年
+        {earliest && `（已获取自${Number(earliest.slice(0, 4))}年${Number(earliest.slice(5, 7))}月至今的开奖记录，完整数据用于统计页）`}。
+      </p>
 
       <div style={{ marginBottom: 14 }}>
         <button className="btn ghost small" onClick={manualSync} disabled={syncing}>
