@@ -3,7 +3,7 @@
 // GET  /api/profile?action=get   读取自己的设置
 // POST /api/profile?action=save  保存自己的设置
 //      body: { displayName, birthDate, birthHour, birthMinute, birthCity,
-//              birthLongitude, manualElements, luckyNumber }
+//              birthLongitude, birthTz(自己填城市时), manualElements, luckyNumber }
 //      不想填的项传 null 即可
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -46,7 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           birthDate: r?.birth_date ?? null,
           birthHour: r?.birth_hour ?? null,
           birthMinute: r?.birth_minute ?? null,
-          birthCity: r?.birth_city ?? null,
+          birthCity: r?.birth_city ? String(r.birth_city).replace(/\|-?\d{1,2}$/, '') : null,
+          birthTz: r?.birth_city && /\|-?\d{1,2}$/.test(String(r.birth_city)) ? Number(String(r.birth_city).split('|').pop()) : null,
           birthLongitude: r?.birth_longitude ?? null,
           manualElements: r?.manual_elements ? String(r.manual_elements).split(',').filter(Boolean) : [],
           luckyNumber: r?.lucky_number ?? null,
@@ -83,7 +84,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const birthCity = b.birthCity ? String(b.birthCity).trim().slice(0, 50) : null;
+      let birthCity = b.birthCity ? String(b.birthCity).trim().replace(/\|/g, '').slice(0, 40) : null;
+      if (birthCity && b.birthTz !== null && b.birthTz !== undefined && b.birthTz !== '') {
+        const tz = Number(b.birthTz);
+        if (!Number.isInteger(tz) || tz < -12 || tz > 14) return fail(res, 400, '时区不对');
+        birthCity = `${birthCity}|${tz}`;
+      }
 
       const els: string[] = Array.isArray(b.manualElements) ? b.manualElements : [];
       if (!els.every((e) => ELEMENTS.includes(e))) return fail(res, 400, '五行只能是 金木水火土');

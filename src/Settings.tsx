@@ -11,6 +11,7 @@ interface Profile {
   birthHour: number | null;
   birthMinute: number | null;
   birthCity: string | null;
+  birthTz?: number | null;
   birthLongitude: number | null;
   manualElements: string[];
   luckyNumber: number | null;
@@ -33,6 +34,8 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
   const [birthTime, setBirthTime] = useState('');
   const [city, setCity] = useState('');
   const [customLongitude, setCustomLongitude] = useState('');
+  const [customCity, setCustomCity] = useState('');
+  const [customTz, setCustomTz] = useState('7');
   const [elements, setElements] = useState<string[]>([]);
   const [lucky, setLucky] = useState('');
   const [msg, setMsg] = useState('');
@@ -61,7 +64,11 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
         if (p.birthCity) {
           const known = CITIES.some((c) => c.name === p.birthCity);
           setCity(known ? p.birthCity : OTHER_CITY);
-          if (!known && p.birthLongitude !== null) setCustomLongitude(String(p.birthLongitude));
+          if (!known) {
+            setCustomCity(p.birthCity === OTHER_CITY ? '' : p.birthCity);
+            if (p.birthLongitude !== null) setCustomLongitude(String(p.birthLongitude));
+            if (p.birthTz !== null && p.birthTz !== undefined) setCustomTz(String(p.birthTz));
+          }
         }
         setElements(p.manualElements);
         setLucky(p.luckyNumber === null ? '' : String(p.luckyNumber));
@@ -91,7 +98,7 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
       let birthCity: string | null = null;
       let birthLongitude: number | null = null;
       if (city === OTHER_CITY) {
-        birthCity = '其他';
+        birthCity = customCity.trim() || '其他';
         birthLongitude = customLongitude === '' ? null : Number(customLongitude);
       } else if (city) {
         birthCity = city;
@@ -107,6 +114,7 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
           birthMinute,
           birthCity,
           birthLongitude,
+          birthTz: city === OTHER_CITY ? Number(customTz) : null,
           manualElements: elements,
           luckyNumber: lucky === '' ? null : Number(lucky),
         },
@@ -185,15 +193,33 @@ export default function Settings({ onLogout, onNameChanged }: Props) {
             {CITIES.map((c) => (
               <option key={c.name} value={c.name}>{c.name}</option>
             ))}
-            <option value={OTHER_CITY}>其他（手动填经度）</option>
+            <option value={OTHER_CITY}>其他（自己填写城市）</option>
           </select>
         </div>
 
         {city === OTHER_CITY && (
-          <div className="field">
-            <label>出生地经度（东经为正，例如 113.26）</label>
-            <input type="number" step="0.01" value={customLongitude} onChange={(e) => setCustomLongitude(e.target.value)} />
-          </div>
+          <>
+            <div className="field">
+              <label>出生城市名称（自己填写，例如 拉萨、乌隆）</label>
+              <input type="text" maxLength={30} value={customCity} onChange={(e) => setCustomCity(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>出生地经度（东经为正，例如 91.13；搜索“城市名 经度”即可查到）</label>
+              <input type="number" step="0.01" value={customLongitude} onChange={(e) => setCustomLongitude(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>出生地当时使用的时区</label>
+              <select value={customTz} onChange={(e) => setCustomTz(e.target.value)}>
+                <option value="7">东七区（泰国、越南、柬埔寨、老挝）</option>
+                <option value="8">东八区（中国大陆、港澳台、新加坡、马来西亚）</option>
+                <option value="9">东九区（日本、韩国）</option>
+                <option value="0">零时区（英国）</option>
+                <option value="1">东一区（欧洲中部）</option>
+                <option value="-5">西五区（美国东部）</option>
+                <option value="-8">西八区（美国西部）</option>
+              </select>
+            </div>
+          </>
         )}
 
         <h2 style={{ marginTop: 20 }}>选号偏好（可选）</h2>

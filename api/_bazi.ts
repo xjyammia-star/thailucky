@@ -51,9 +51,12 @@ export interface BaziResult {
 const THAI_CITIES = ['曼谷', '清迈', '普吉', '芭堤雅'];
 
 function standardMeridian(city: string | null, lon: number): number {
+  // 自己填写的城市，保存格式是"城市名|时区"（例如 "拉萨|8"），时区×15 就是标准经线
+  const m = city ? /\|(-?\d{1,2})$/.exec(city) : null;
+  if (m) return Number(m[1]) * 15;
   if (city && THAI_CITIES.includes(city)) return 105;
   if (city && city !== '其他') return 120; // 列表里其余城市在中国/港台/新马，时区都是 UTC+8
-  return lon < 112.5 ? 105 : 120; // 手填经度：粗略判断
+  return lon < 112.5 ? 105 : 120; // 旧数据里没填城市名的手填经度：粗略判断
 }
 
 export function computeBazi(input: BaziInput): BaziResult {
