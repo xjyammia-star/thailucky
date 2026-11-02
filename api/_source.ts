@@ -138,6 +138,15 @@ export async function checkSource(): Promise<CheckStep[]> {
 
   // 两个地址各试一次，分别报告（排查"为什么没拿到最新一期"用）
   const probes = await Promise.allSettled(DATA_URLS.map((u) => loadOne(u)));
+  // 探测 Sanook 页面（试验：看服务器能不能读到、页面里有没有号码）
+  try {
+    const html = await getText('https://news.sanook.com/lotto/check/01112569/');
+    const title = (/<title>([^<]{0,80})/.exec(html)?.[1] ?? '没有标题').trim();
+    const sixes = (html.match(/(?<!\d)\d{6}(?!\d)/g) ?? []).length;
+    steps.push({ name: '试验：Sanook 2026-11-01 页面', ok: sixes > 100, detail: `能打开，页面 ${html.length} 字符，标题「${title}」，其中 6 位数字 ${sixes} 个，含头奖 423224：${html.includes('423224') ? '是' : '否'}` });
+  } catch (err) {
+    steps.push({ name: '试验：Sanook 2026-11-01 页面', ok: false, detail: err instanceof Error ? err.message : String(err) });
+  }
   probes.forEach((r, i) => {
     const host = new URL(DATA_URLS[i]).host;
     if (r.status === 'fulfilled') {
