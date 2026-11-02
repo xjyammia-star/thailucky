@@ -1,10 +1,11 @@
 // 首页：下一期开奖倒计时 + 最近一期开奖结果 + 我的号码（待开奖、已确定购买的）
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api.ts';
 import type { CurrentUser, DrawSummary } from './api.ts';
 import { autoSyncIfNeeded, getNextDraw } from './draw.ts';
 import DrawCard from './DrawCard.tsx';
+import CheckCard from './CheckCard.tsx';
 import { PurchaseGroup } from './History.tsx';
 import type { HistGroup } from './History.tsx';
 
@@ -21,11 +22,15 @@ export default function Home({ user, goPick, goDraws, goHistory }: Props) {
   const [lastBuy, setLastBuy] = useState<HistGroup | null>(null);
 
   // 读我最近一次购买的号码（没有数据库表等错误时静默忽略，不影响首页）
-  useEffect(() => {
+  const loadLast = useCallback(() => {
     api<{ groups: HistGroup[] }>('/api/numbers?action=history')
       .then((r) => setLastBuy(r.groups[0] ?? null))
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    loadLast();
+  }, [loadLast]);
 
   // 读最近一期；如果落后于应有的开奖日，自动同步一次后再读
   useEffect(() => {
@@ -78,9 +83,11 @@ export default function Home({ user, goPick, goDraws, goHistory }: Props) {
         </>
       )}
 
+      <CheckCard latestDate={latest?.date ?? null} onSaved={loadLast} />
+
       <div className="card">
         <h2>我最近一次购买</h2>
-        {lastBuy ? <PurchaseGroup g={lastBuy} /> : <p className="muted">还没有已确定购买的号码。</p>}
+        {lastBuy ? <PurchaseGroup g={lastBuy} onChanged={loadLast} /> : <p className="muted">还没有已确定购买的号码。</p>}
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn" onClick={goPick}>去选号</button>
           <button className="btn ghost" onClick={goHistory}>历史购买记录</button>

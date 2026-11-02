@@ -1,7 +1,7 @@
 // 购买记录页：我实际购买过的所有号码，按开奖期分组，显示对奖结果。
 // 同时导出 PurchaseGroup（首页的"最近一次购买"也用它显示）。
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.ts';
 import { baht } from './prizes.ts';
 
@@ -28,7 +28,33 @@ export interface HistSummary {
   total: number;
 }
 
-export function PurchaseGroup({ g }: { g: HistGroup }) {
+export function PurchaseGroup({ g, onChanged }: { g: HistGroup; onChanged?: () => void }) {
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editVal, setEditVal] = useState('');
+  const [err, setErr] = useState('');
+
+  async function saveEdit(id: number) {
+    setErr('');
+    try {
+      await api('/api/numbers?action=update_pick', { method: 'POST', body: { pickId: id, number: editVal } });
+      setEditId(null);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '修改失败');
+    }
+  }
+
+  async function removePick(p: HistPick) {
+    if (!window.confirm(`确定删除号码 ${p.number} 吗？删除后不能恢复。`)) return;
+    setErr('');
+    try {
+      await api('/api/numbers?action=delete_pick', { method: 'POST', body: { pickId: p.id } });
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '删除失败');
+    }
+  }
+
   return (
     <div style={{ marginTop: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -39,20 +65,46 @@ export function PurchaseGroup({ g }: { g: HistGroup }) {
           {g.state === 'nodata' && '还没有这一期的开奖数据'}
         </span>
       </div>
+      {err && <div className="error">{err}</div>}
       {g.picks.map((p) => (
         <div key={p.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
-          <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: 1 }}>{p.number}</span>
-          {p.result && p.result.wins.length > 0 ? (
-            <span style={{ color: 'var(--red)', fontWeight: 600, marginLeft: 10 }}>
-              🎉 {p.result.wins.map((w) => w.label).join('、')}
-              {p.result.total > 0 && `　${baht(p.result.total)}`}
-            </span>
-          ) : p.result ? (
-            <span className="muted" style={{ marginLeft: 10 }}>
-              未中奖{p.result.incomplete ? '（二到五等奖数据不完整）' : ''}
-            </span>
+          {editId === p.id ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={editVal}
+                onChange={(e) => setEditVal(e.target.value.replace(/\D/g, ''))}
+                style={{ width: 130, padding: '6px 8px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 18, letterSpacing: 1 }}
+              />
+              <button className="btn small" disabled={editVal.length !== 6} onClick={() => saveEdit(p.id)}>保存</button>
+              <button className="btn small ghost" onClick={() => setEditId(null)}>取消</button>
+            </div>
           ) : (
-            <span className="muted" style={{ marginLeft: 10 }}>{g.state === 'waiting' ? '等待开奖' : '未对奖'}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div>
+                <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: 1 }}>{p.number}</span>
+                {p.result && p.result.wins.length > 0 ? (
+                  <span style={{ color: 'var(--red)', fontWeight: 600, marginLeft: 10 }}>
+                    🎉 {p.result.wins.map((w) => w.label).join('、')}
+                    {p.result.total > 0 && `　${baht(p.result.total)}`}
+                  </span>
+                ) : p.result ? (
+                  <span className="muted" style={{ marginLeft: 10 }}>
+                    未中奖{p.result.incomplete ? '（二到五等奖数据不完整）' : ''}
+                  </span>
+                ) : (
+                  <span className="muted" style={{ marginLeft: 10 }}>{g.state === 'waiting' ? '等待开奖' : '未对奖'}</span>
+                )}
+              </div>
+              {onChanged && (
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button className="btn small ghost" onClick={() => { setEditId(p.id); setEditVal(p.number); setErr(''); }}>修改</button>
+                  <button className="btn small danger" onClick={() => removePick(p)}>删除</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       ))}
@@ -68,7 +120,7 @@ export default function History({ goBack }: { goBack: () => void }) {
   const [sum, setSum] = useState<HistSummary | null>(null);
   const [err, setErr] = useState('');
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api<{ groups: HistGroup[]; summary: HistSummary }>('/api/numbers?action=history')
       .then((r) => {
         setGroups(r.groups);
@@ -76,6 +128,10 @@ export default function History({ goBack }: { goBack: () => void }) {
       })
       .catch((e) => setErr(e instanceof Error ? e.message : '读取失败'));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <>
@@ -105,7 +161,7 @@ export default function History({ goBack }: { goBack: () => void }) {
 
       {groups?.map((g) => (
         <div className="card" key={g.targetDraw}>
-          <PurchaseGroup g={g} />
+          <PurchaseGroup g={g} onChanged={load} />
         </div>
       ))}
     </>

@@ -2,6 +2,8 @@
 //
 // GET  /api/numbers?action=bazi           读取自己的八字五行分析
 // GET  /api/numbers?action=history        我的购买记录（实际购买的号码，按开奖期分组，含对奖结果）
+// POST /api/numbers?action=update_pick   修改一个号码  body: { pickId, number }
+// POST /api/numbers?action=delete_pick   删除一个号码（空批次一并删除）  body: { pickId }
 // POST /api/numbers?action=score          选号评分（不保存，可多个）  body: { list: ['2到6位数字', ...], months }
 // POST /api/numbers?action=generate       生成一批并保存
 //      body: { method: 'lucky'|'meihua'|'analysis', count, targetDraw, luckyNumber?, nums?: [a,b,c], months? }
@@ -283,6 +285,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
       return res.status(200).json({ success: true, groups, summary: sum });
+    }
+
+    // ---------- 修改 / 删除一个号码（输错了可以改） ----------
+    if (req.method === 'POST' && action === 'update_pick') {
+      const pickId = Number(req.body?.pickId);
+      const number = String(req.body?.number ?? '').trim();
+      if (!Number.isInteger(pickId)) return fail(res, 400, '参数不对');
+      if (!/^\d{6}$/.test(number)) return fail(res, 400, '号码需要是6位数字');
+      await sql`UPDATE picks SET number = ${number} WHERE id = ${pickId} AND user_id = ${user.id}`;
+      return res.status(200).json({ success: true });
+    }
+
+    if (req.method === 'POST' && action === 'delete_pick') {
+      const pickId = Number(req.body?.pickId);
+      if (!Number.isInteger(pickId)) return fail(res, 400, '参数不对');
+      const gone = await sql`DELETE FROM picks WHERE id = ${pickId} AND user_id = ${user.id} RETURNING batch_id`;
+      if (gone.length > 0) {
+        // 这一批如果一个号码都不剩了，把空批次也一起删掉
+        await sql`
+          DELETE FROM batches
+          WHERE id = ${gone[0].batch_id} AND user_id = ${user.id}
+            AND NOT EXISTS (SELECT 1 FROM picks WHERE batch_id = batches.id)
+        `;
+      }
+      return res.status(200).json({ success: true });
     }
 
     if (req.method === 'POST' && action === 'mark') {
