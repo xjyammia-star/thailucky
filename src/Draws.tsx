@@ -73,7 +73,7 @@ export default function Draws(_props: Props) {
     setErr('');
     setMsg('');
     try {
-      const r = await api<{ message: string }>('/api/draws?action=sync', { method: 'POST', body: {} });
+      const r = await api<{ message: string }>('/api/draws?action=sync', { method: 'POST', body: { manual: true } });
       setMsg(r.message);
       await load();
     } catch (e) {

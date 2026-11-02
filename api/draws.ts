@@ -4,7 +4,7 @@
 //   GET  /api/draws?action=list             开奖列表（摘要，新的在前）
 //   GET  /api/draws?action=latest           最近一期（含全部奖号）
 //   GET  /api/draws?action=get&date=2026-10-16   某一期的全部奖号
-//   POST /api/draws?action=sync             自动获取开奖数据（10分钟内只会真正去取一次；管理员可传 force 跳过限制）
+//   POST /api/draws?action=sync             自动获取开奖数据（10分钟内只会真正去取一次；手动点按钮只限 30 秒；管理员可传 force 跳过限制）
 // 仅管理员：
 //   GET  /api/draws?action=check_source     检测自动获取的来源是否可用
 //   POST /api/draws?action=import_preview   body: { text }  预览 md 文档能识别出什么（不保存）
@@ -129,9 +129,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // ---------- 自动同步 ----------
     if (req.method === 'POST' && action === 'sync') {
-      const force = req.body?.force === true && user.isAdmin; // 管理员可以跳过10分钟限制
+      const force = req.body?.force === true && user.isAdmin; // 管理员可以跳过限制
+      const manual = req.body?.manual === true; // 用户手动点了"获取最新开奖数据"：只限制 30 秒
       const last = await readMeta(sql, 'last_sync_at');
-      if (!force && last && Date.now() - Number(last) < SYNC_INTERVAL_MS) {
+      const gap = manual ? 30 * 1000 : SYNC_INTERVAL_MS;
+      if (!force && last && Date.now() - Number(last) < gap) {
         return res.status(200).json({ success: true, skipped: true, added: 0, message: '刚刚同步过，稍后再试' });
       }
       await writeMeta(sql, 'last_sync_at', String(Date.now()));
