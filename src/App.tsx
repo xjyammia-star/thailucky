@@ -10,8 +10,9 @@ import Admin from './Admin.tsx';
 import Draws from './Draws.tsx';
 import Pick from './Pick.tsx';
 import Stats from './Stats.tsx';
+import History from './History.tsx';
 
-type Tab = 'home' | 'pick' | 'draws' | 'stats' | 'settings' | 'admin';
+type Tab = 'home' | 'pick' | 'draws' | 'stats' | 'settings' | 'admin' | 'history';
 
 interface MeResponse {
   user: CurrentUser | null;
@@ -65,8 +66,9 @@ export default function App() {
   return (
     <>
       <div className="app">
-        {tab === 'home' && <Home user={user} goPick={() => setTab('pick')} goDraws={() => setTab('draws')} />}
+        {tab === 'home' && <Home user={user} goPick={() => setTab('pick')} goDraws={() => setTab('draws')} goHistory={() => setTab('history')} />}
         {tab === 'pick' && <Pick />}
+        {tab === 'history' && <History goBack={() => setTab('home')} />}
         {tab === 'stats' && <Stats />}
         {tab === 'draws' && <Draws isAdmin={user.isAdmin} />}
         {tab === 'settings' && (
@@ -79,7 +81,7 @@ export default function App() {
       </div>
 
       <nav className="nav">
-        <button className={tab === 'home' ? 'on' : ''} onClick={() => setTab('home')}><span className="ico">🏠</span><span>首页</span></button>
+        <button className={tab === 'home' || tab === 'history' ? 'on' : ''} onClick={() => setTab('home')}><span className="ico">🏠</span><span>首页</span></button>
         <button className={tab === 'pick' ? 'on' : ''} onClick={() => setTab('pick')}><span className="ico">🎲</span><span>选号</span></button>
         <button className={tab === 'draws' ? 'on' : ''} onClick={() => setTab('draws')}><span className="ico">🏆</span><span>开奖</span></button>
         <button className={tab === 'stats' ? 'on' : ''} onClick={() => setTab('stats')}><span className="ico">📊</span><span>统计</span></button>

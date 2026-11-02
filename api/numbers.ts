@@ -1,6 +1,7 @@
 // 选号接口：每个人只能看到、操作自己的号码
 //
 // GET  /api/numbers?action=bazi           读取自己的八字五行分析
+// GET  /api/numbers?action=history        我的购买记录（实际购买的号码，按开奖期分组，含对奖结果）
 // POST /api/numbers?action=score          选号评分（不保存，可多个）  body: { list: ['2到6位数字', ...], months }
 // POST /api/numbers?action=generate       生成一批并保存
 //      body: { method: 'lucky'|'meihua'|'analysis', count, targetDraw, luckyNumber?, nums?: [a,b,c], months? }
@@ -219,6 +220,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         };
       });
       return res.status(200).json({ success: true, batches: out, summary: sum });
+    }
+
+    // ---------- 购买记录：我实际购买的所有号码，按开奖期分组，含对奖结果 ----------
+    if (req.method === 'GET' && action === 'history') {
+      const rows = await sql`
+        SELECT p.id, p.number, b.target_draw::text AS target_draw
+        FROM picks p JOIN batches b ON b.id = p.batch_id
+        WHERE p.user_id = ${user.id} AND p.bought = true
+        ORDER BY b.target_draw DESC, p.id
+      `;
+      const earliest = rows.reduce((m, r) => (String(r.target_draw) < m ? String(r.target_draw) : m), '9999-12-31');
+      const drawRows = rows.length
+        ? await sql`
+            SELECT draw_date::text AS draw_date, first_prize, near_first, front3, back3, back2,
+                   prize2, prize3, prize4, prize5
+            FROM draws WHERE draw_date >= ${earliest}::date
+          `
+        : [];
+      const draws = drawRows.map(rowToDraw);
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date());
+      const groups: {
+        targetDraw: string;
+        drawDate: string | null;
+        state: 'checked' | 'waiting' | 'nodata';
+        count: number;
+        winners: number;
+        total: number;
+        picks: { id: number; number: string; result: CheckResult | null }[];
+      }[] = [];
+      const sum = { count: 0, checked: 0, winners: 0, total: 0 };
+      for (const r of rows) {
+        const target = String(r.target_draw);
+        let g = groups.find((x) => x.targetDraw === target);
+        if (!g) {
+          const draw = findDraw(target, draws);
+          const limit = new Date(Date.parse(`${target}T00:00:00Z`) + 5 * 86400000).toISOString().slice(0, 10);
+          g = {
+            targetDraw: target,
+            drawDate: draw ? draw.date : null,
+            state: draw ? 'checked' : today > limit ? 'nodata' : 'waiting',
+            count: 0,
+            winners: 0,
+            total: 0,
+            picks: [],
+          };
+          groups.push(g);
+        }
+        const draw = g.drawDate ? draws.find((d) => d.date === g!.drawDate) : undefined;
+        const result: CheckResult | null = draw ? checkNumber(r.number as string, draw) : null;
+        g.picks.push({ id: Number(r.id), number: r.number as string, result });
+        g.count++;
+        sum.count++;
+        if (result) {
+          sum.checked++;
+          if (result.wins.length > 0) {
+            g.winners++;
+            sum.winners++;
+          }
+          g.total += result.total;
+          sum.total += result.total;
+        }
+      }
+      return res.status(200).json({ success: true, groups, summary: sum });
     }
 
     if (req.method === 'POST' && action === 'mark') {
