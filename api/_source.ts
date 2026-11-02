@@ -90,6 +90,106 @@ async function loadOne(url: string): Promise<RawDraw[]> {
   return rows;
 }
 
+
+// ---------- 第三个来源：Sanook 开奖页（开奖当天就有） ----------
+// 数据集更新慢，所以数据集里还没有的最近一期，直接读 Sanook 的开奖页补上。
+// 页面地址规律：news.sanook.com/lotto/check/日月佛历年，例如 2026-11-01 → 01112569。
+// 解析按"奖项标题 + 号码个数"严格核对，核对不上就当作没读到（宁可不写，也不写错）。
+
+const THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+export function sanookUrl(date: string): string {
+  const [y, m, d] = date.split('-');
+  return `https://news.sanook.com/lotto/check/${d}${m}${Number(y) + 543}/`;
+}
+
+export function parseSanook(html: string, date: string): RawDraw {
+  const [y, m, d] = date.split('-').map(Number);
+  const dateText = `${d} ${THAI_MONTHS[m - 1]} ${y + 543}`;
+  if (!html.includes(dateText)) throw new Error(`页面里没有找到日期 ${dateText}（可能还没开奖）`);
+
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  // 奖项标题（"头奖前后各一号"要放在"头奖"前面匹配）
+  const marker =
+    /(รางวัลข้างเคียงรางวัลที่\s*1)|(รางวัลที่\s*1(?!\d))|(รางวัลที่\s*2(?!\d))|(รางวัลที่\s*3(?!\d))|(รางวัลที่\s*4(?!\d))|(รางวัลที่\s*5(?!\d))|(เลขหน้า\s*3\s*ตัว)|(เลขท้าย\s*3\s*ตัว)|(เลขท้าย\s*2\s*ตัว)/g;
+  const keys = ['near', 'first', 'prize2', 'prize3', 'prize4', 'prize5', 'front3', 'back3', 'back2'] as const;
+  const spec: Record<(typeof keys)[number], { len: number; count: number }> = {
+    near: { len: 6, count: 2 },
+    first: { len: 6, count: 1 },
+    prize2: { len: 6, count: 5 },
+    prize3: { len: 6, count: 10 },
+    prize4: { len: 6, count: 50 },
+    prize5: { len: 6, count: 100 },
+    front3: { len: 3, count: 2 },
+    back3: { len: 3, count: 2 },
+    back2: { len: 2, count: 1 },
+  };
+
+  const hits: { key: (typeof keys)[number]; start: number; end: number }[] = [];
+  for (const mt of text.matchAll(marker)) {
+    const idx = mt.slice(1).findIndex((g) => g !== undefined);
+    hits.push({ key: keys[idx], start: mt.index! + mt[0].length, end: text.length });
+  }
+  hits.forEach((h, i) => {
+    if (i + 1 < hits.length) h.end = hits[i + 1].start;
+  });
+
+  const out: Record<string, string[]> = {};
+  for (const h of hits) {
+    if (out[h.key]) continue;
+    const sp = spec[h.key];
+    const seg = text.slice(h.start, h.end).replace(/\d{1,3}(,\d{3})+/g, ' '); // 去掉金额
+    const nums = seg.match(new RegExp(`(?<![\\d,])\\d{${sp.len}}(?![\\d,])`, 'g')) ?? [];
+    if (nums.length === sp.count && new Set(nums).size === nums.length) out[h.key] = nums;
+  }
+  const missing = keys.filter((k) => !out[k]);
+  if (missing.length > 0) throw new Error(`页面格式核对没通过，没读到：${missing.join('、')}`);
+  return {
+    date,
+    first: out.first[0],
+    near: out.near,
+    prize2: out.prize2,
+    prize3: out.prize3,
+    prize4: out.prize4,
+    prize5: out.prize5,
+    front3: out.front3,
+    back3: out.back3,
+    back2: out.back2,
+  };
+}
+
+async function fetchSanook(date: string): Promise<RawDraw> {
+  return parseSanook(await getText(sanookUrl(date)), date);
+}
+
+// 曼谷今天的日期
+function bangkokToday(): string {
+  return new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+}
+
+// 数据集最新一期之后、今天之前（含今天）的开奖日（每月 1 日、16 日）
+export function missingDrawDates(latest: string): string[] {
+  const today = bangkokToday();
+  const out: string[] = [];
+  const [ly, lm] = latest.split('-').map(Number);
+  for (let k = 0; k < 4; k++) {
+    const mm = lm - 1 + k;
+    const y = ly + Math.floor(mm / 12);
+    const m = (mm % 12) + 1;
+    for (const d of [1, 16]) {
+      const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      if (iso > latest && iso <= today) out.push(iso);
+    }
+  }
+  return out;
+}
+
 let lastUsed = '';
 
 async function loadAll(): Promise<RawDraw[]> {
@@ -110,8 +210,25 @@ async function loadAll(): Promise<RawDraw[]> {
   });
   if (!best) throw new Error(errors.join('；') || '两个数据地址都打不开');
   lastUsed = new URL(bestUrl).host;
-  cache = { at: Date.now(), rows: best };
-  return best;
+  let rows: RawDraw[] = best;
+  // 数据集里还没有的最近几期，去 Sanook 补（读不到就跳过，不影响其他）
+  const latest = rows[0]?.date ?? '';
+  if (latest) {
+    const extra: RawDraw[] = [];
+    for (const dt of missingDrawDates(latest)) {
+      try {
+        extra.push(await fetchSanook(dt));
+      } catch {
+        /* 还没开奖或页面格式变了：跳过 */
+      }
+    }
+    if (extra.length > 0) {
+      rows = [...extra, ...rows].sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? 1 : -1));
+      lastUsed += ' + news.sanook.com';
+    }
+  }
+  cache = { at: Date.now(), rows };
+  return rows;
 }
 
 // 保持和原来一样的用法：第1页 = 全部期号（新的在前），第2页起为空
@@ -138,14 +255,15 @@ export async function checkSource(): Promise<CheckStep[]> {
 
   // 两个地址各试一次，分别报告（排查"为什么没拿到最新一期"用）
   const probes = await Promise.allSettled(DATA_URLS.map((u) => loadOne(u)));
-  // 探测 Sanook 页面（试验：看服务器能不能读到、页面里有没有号码）
-  try {
-    const html = await getText('https://news.sanook.com/lotto/check/01112569/');
-    const title = (/<title>([^<]{0,80})/.exec(html)?.[1] ?? '没有标题').trim();
-    const sixes = (html.match(/(?<!\d)\d{6}(?!\d)/g) ?? []).length;
-    steps.push({ name: '试验：Sanook 2026-11-01 页面', ok: sixes > 100, detail: `能打开，页面 ${html.length} 字符，标题「${title}」，其中 6 位数字 ${sixes} 个，含头奖 423224：${html.includes('423224') ? '是' : '否'}` });
-  } catch (err) {
-    steps.push({ name: '试验：Sanook 2026-11-01 页面', ok: false, detail: err instanceof Error ? err.message : String(err) });
+  // Sanook 开奖页：用最近一个应该已开奖的日期试读
+  {
+    const cand = missingDrawDates('2026-10-16').pop() ?? '2026-11-01';
+    try {
+      const raw = await fetchSanook(cand);
+      steps.push({ name: `地址 news.sanook.com（${cand}）`, ok: true, detail: `能读到并通过核对：头奖 ${raw.first}；前三 ${raw.front3?.join('/')}；后三 ${raw.back3?.join('/')}；后二 ${raw.back2?.join('/')}；二到五等奖号码数 ${raw.prize2?.length}/${raw.prize3?.length}/${raw.prize4?.length}/${raw.prize5?.length}` });
+    } catch (err) {
+      steps.push({ name: `地址 news.sanook.com（${cand}）`, ok: false, detail: err instanceof Error ? err.message : String(err) });
+    }
   }
   probes.forEach((r, i) => {
     const host = new URL(DATA_URLS[i]).host;
