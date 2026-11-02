@@ -136,6 +136,17 @@ export interface CheckStep {
 export async function checkSource(): Promise<CheckStep[]> {
   const steps: CheckStep[] = [];
 
+  // 两个地址各试一次，分别报告（排查"为什么没拿到最新一期"用）
+  const probes = await Promise.allSettled(DATA_URLS.map((u) => loadOne(u)));
+  probes.forEach((r, i) => {
+    const host = new URL(DATA_URLS[i]).host;
+    if (r.status === 'fulfilled') {
+      steps.push({ name: `地址 ${host}`, ok: true, detail: `能打开，共 ${r.value.length} 期，最新一期是 ${r.value[0]?.date}` });
+    } else {
+      steps.push({ name: `地址 ${host}`, ok: false, detail: r.reason instanceof Error ? r.reason.message : String(r.reason) });
+    }
+  });
+
   let firstId: string | null = null;
   try {
     const items = await fetchList(1);
