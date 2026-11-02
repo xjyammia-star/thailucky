@@ -1,17 +1,15 @@
 // 自动获取开奖数据的"来源"（内部用，不是接口）。
-// 来源：开源数据集 huayreview/thai-lottery-results（原站 huayreview.net 与 GitHub 副本，整理自泰国政府彩票局官方结果，CC BY 4.0 许可，
+// 来源：开源数据集 huayreview/thai-lottery-results（GitHub 上的副本，整理自泰国政府彩票局官方结果，CC BY 4.0 许可，
 // 使用时需注明出处，页面底部已标注）。它是一个静态 JSON 文件，比第三方接口稳定得多。
 // 它由作者定期更新，所以刚开奖后可能晚几天才有；这时可以在【管理】页用 md 导入补上。
 // 哪天它停更或改了格式，【管理】页的"检测数据源"会告诉我们原因，换来源只需要改这个文件。
 
 import type { RawDraw } from './_draws.js';
 
-// 同一份数据有两个地址：原站更新最及时（开奖当天就有），GitHub 副本有时晚几天。
-// 两个都去取，用"期数更新"的那个；其中一个打不开也没关系。
-const DATA_URLS = [
-  'https://huayreview.net/data/thai-lottery-results.json',
-  'https://raw.githubusercontent.com/huayreview/thai-lottery-results/main/thai-lottery-results.json',
-];
+// 全部历史开奖：读 GitHub 上的数据集（稳定，但作者更新会晚一两天）。
+// 数据集里还没有的最近一期，由下面的 Sanook 开奖页补上。
+// （原站 huayreview.net 有人机验证，服务器读不了，所以不用。）
+const DATA_URLS = ['https://raw.githubusercontent.com/huayreview/thai-lottery-results/main/thai-lottery-results.json'];
 
 export interface ListItem {
   id: string; // 这个来源里用日期当编号，例如 2026-10-16
