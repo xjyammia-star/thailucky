@@ -1,12 +1,17 @@
 // 自动获取开奖数据的"来源"（内部用，不是接口）。
-// 来源：GitHub 上的开源数据集 huayreview/thai-lottery-results（整理自泰国政府彩票局官方结果，CC BY 4.0 许可，
+// 来源：开源数据集 huayreview/thai-lottery-results（原站 huayreview.net 与 GitHub 副本，整理自泰国政府彩票局官方结果，CC BY 4.0 许可，
 // 使用时需注明出处，页面底部已标注）。它是一个静态 JSON 文件，比第三方接口稳定得多。
 // 它由作者定期更新，所以刚开奖后可能晚几天才有；这时可以在【管理】页用 md 导入补上。
 // 哪天它停更或改了格式，【管理】页的"检测数据源"会告诉我们原因，换来源只需要改这个文件。
 
 import type { RawDraw } from './_draws.js';
 
-const DATA_URL = 'https://raw.githubusercontent.com/huayreview/thai-lottery-results/main/thai-lottery-results.json';
+// 同一份数据有两个地址：原站更新最及时（开奖当天就有），GitHub 副本有时晚几天。
+// 两个都去取，用"期数更新"的那个；其中一个打不开也没关系。
+const DATA_URLS = [
+  'https://huayreview.net/data/thai-lottery-results.json',
+  'https://raw.githubusercontent.com/huayreview/thai-lottery-results/main/thai-lottery-results.json',
+];
 
 export interface ListItem {
   id: string; // 这个来源里用日期当编号，例如 2026-10-16
@@ -20,7 +25,7 @@ async function getText(url: string, timeoutMs = 20000): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; xuanhao-family-app)', Accept: 'application/json' } });
     const text = await res.text();
     if (!res.ok) throw new Error(`HTTP ${res.status}：${text.slice(0, 120)}`);
     return text;
@@ -65,9 +70,8 @@ export function mapDataset(row: unknown): RawDraw | null {
 // 同一次请求里只下载一次（文件约一两兆）
 let cache: { at: number; rows: RawDraw[] } | null = null;
 
-async function loadAll(): Promise<RawDraw[]> {
-  if (cache && Date.now() - cache.at < 60_000) return cache.rows;
-  const text = await getText(DATA_URL);
+async function loadOne(url: string): Promise<RawDraw[]> {
+  const text = await getText(url);
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -83,8 +87,31 @@ async function loadAll(): Promise<RawDraw[]> {
   }
   if (rows.length === 0) throw new Error('数据集里没有读到任何一期');
   rows.sort((a, b) => ((a.date ?? '') < (b.date ?? '') ? 1 : -1)); // 新的在前
-  cache = { at: Date.now(), rows };
   return rows;
+}
+
+let lastUsed = '';
+
+async function loadAll(): Promise<RawDraw[]> {
+  if (cache && Date.now() - cache.at < 60_000) return cache.rows;
+  const results = await Promise.allSettled(DATA_URLS.map((u) => loadOne(u)));
+  let best: RawDraw[] | null = null;
+  let bestUrl = '';
+  const errors: string[] = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      if (!best || (r.value[0]?.date ?? '') > (best[0]?.date ?? '')) {
+        best = r.value;
+        bestUrl = DATA_URLS[i];
+      }
+    } else {
+      errors.push(`${new URL(DATA_URLS[i]).host}：${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+    }
+  });
+  if (!best) throw new Error(errors.join('；') || '两个数据地址都打不开');
+  lastUsed = new URL(bestUrl).host;
+  cache = { at: Date.now(), rows: best };
+  return best;
 }
 
 // 保持和原来一样的用法：第1页 = 全部期号（新的在前），第2页起为空
@@ -119,7 +146,7 @@ export async function checkSource(): Promise<CheckStep[]> {
       steps.push({
         name: '下载开奖数据集',
         ok: true,
-        detail: `成功，共 ${items.length} 期，最新一期是 ${items[0].date}`,
+        detail: `成功（来自 ${lastUsed}），共 ${items.length} 期，最新一期是 ${items[0].date}`,
       });
     }
   } catch (err) {
